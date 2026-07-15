@@ -12,6 +12,12 @@ var (
 	ProfileJson bool
 )
 
+// init makes env-driven config work for library consumers too — importing
+// any webrun package is enough; no explicit Init call required.
+func init() {
+	Init()
+}
+
 func Init() {
 	ViewWidth = envToInt64("VIEW_WIDTH", ViewWidth)
 	DataDir = os.Getenv("DATA_DIR")
