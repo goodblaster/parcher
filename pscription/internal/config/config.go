@@ -1,0 +1,48 @@
+package config
+
+import (
+	"os"
+	"strconv"
+)
+
+var (
+	MaxHeight   int64
+	ViewWidth   int64 = 1600
+	DataDir     string
+	ProfileJson bool
+)
+
+func Init() {
+	ViewWidth = envToInt64("VIEW_WIDTH", ViewWidth)
+	DataDir = os.Getenv("DATA_DIR")
+	MaxHeight = envToInt64("MAX_HEIGHT", 0) // 0 in unlimited
+	ProfileJson = envToBool("PROFILE_JSON", false)
+}
+
+func envToInt64(env string, def int64) int64 {
+	val := os.Getenv(env)
+	if val == "" {
+		return def
+	}
+
+	i, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
+		return def
+	}
+
+	return i
+}
+
+func envToBool(env string, def bool) bool {
+	val := os.Getenv(env)
+	if val == "" {
+		return def
+	}
+
+	b, err := strconv.ParseBool(val)
+	if err != nil {
+		return def
+	}
+
+	return b
+}

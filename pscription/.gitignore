@@ -1,0 +1,22 @@
+# Build artifacts
+/bin/
+/dist/
+
+# Capture outputs
+/captures/
+*.mht
+*.mhtml
+
+# Environment
+.env
+.env.local
+
+# Go workspace
+go.work
+go.work.sum
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
