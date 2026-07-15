@@ -15,67 +15,91 @@ func Run(ctx context.Context, url string, actions ...chromedp.ActionFunc) error 
 	return RunWithConfig(ctx, url, DefaultConfig(), actions...)
 }
 
-// RunWithConfig loads a URL in a headless browser and executes actions with custom configuration
+// RunWithConfig loads a URL and executes actions, then closes the browser.
 func RunWithConfig(ctx context.Context, url string, cfg Config, actions ...chromedp.ActionFunc) error {
-	// Create context with timeout and browser options
-	ctx, cancel := createBrowserContext(ctx, cfg.Timeout)
-	defer cancel()
+	session, err := Start(ctx, url, cfg)
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	return session.Run(actions...)
+}
 
-	// Setup JavaScript dialog handler (auto-accept)
+// Session is a live browser context: navigation and setup have completed and
+// further actions can be run against the same page. Callers control its
+// lifetime, which is what makes headful "leave it open" and step-by-step
+// execution possible.
+type Session struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+// Context exposes the browser context for advanced use (e.g. attaching event
+// listeners).
+func (s *Session) Context() context.Context { return s.ctx }
+
+// Start launches a browser, applies setup and pre-navigation actions,
+// navigates to url, and waits for the page to be ready. The returned Session
+// is live until Close.
+func Start(ctx context.Context, url string, cfg Config) (*Session, error) {
+	ctx, cancel := createBrowserContext(ctx, cfg.Timeout, cfg.Headful)
+
+	// Auto-accept JavaScript dialogs (alert/confirm/beforeunload).
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		if _, ok := ev.(*page.EventJavascriptDialogOpening); ok {
 			_ = chromedp.Run(ctx, page.HandleJavaScriptDialog(true))
 		}
 	})
 
-	// Build complete task list - setup + pre-navigation + user actions
-	allTasks := []chromedp.Action{
-		// Browser setup
+	tasks := []chromedp.Action{
 		emulation.SetUserAgentOverride(cfg.UserAgent),
 		emulation.SetDeviceMetricsOverride(cfg.ViewportWidth, 0, 1.0, false),
 	}
-
-	// Pre-navigation actions run before the page exists: cookie seeding,
-	// scripts registered to evaluate on new documents, request blocking.
-	allTasks = append(allTasks, cfg.PreNavigate...)
-
-	allTasks = append(allTasks,
-		// Navigation
+	tasks = append(tasks, cfg.PreNavigate...)
+	tasks = append(tasks,
 		chromedp.Navigate(url),
 		chromedp.WaitReady(cfg.WaitFor),
-
-		// Initial wait
 		chromedp.Sleep(cfg.InitialWait),
 	)
 
-	// Convert ActionFuncs to Actions and append
-	for _, actionFunc := range actions {
-		allTasks = append(allTasks, actionFunc)
+	if err := chromedp.Run(ctx, tasks...); err != nil {
+		cancel()
+		return nil, errors.Wrap(err, "failed to start browser session")
 	}
+	return &Session{ctx: ctx, cancel: cancel}, nil
+}
 
-	// Execute everything in a single Run call
-	err := chromedp.Run(ctx, allTasks...)
-	if err != nil {
+// Run executes actions against the live session.
+func (s *Session) Run(actions ...chromedp.ActionFunc) error {
+	tasks := make([]chromedp.Action, len(actions))
+	for i, a := range actions {
+		tasks[i] = a
+	}
+	if err := chromedp.Run(s.ctx, tasks...); err != nil {
 		return errors.Wrap(err, "failed to run browser tasks")
 	}
-
 	return nil
 }
 
-// createBrowserContext creates a chromedp context with timeout and headless configuration
-func createBrowserContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-	// Create timeout context
+// Close tears down the browser.
+func (s *Session) Close() { s.cancel() }
+
+// createBrowserContext creates a chromedp context with timeout and headless
+// (or headful) configuration.
+func createBrowserContext(ctx context.Context, timeout time.Duration, headful bool) (context.Context, context.CancelFunc) {
 	ctx, cancel1 := context.WithTimeout(ctx, timeout)
 
-	// Setup browser allocator options
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
+		chromedp.Flag("headless", !headful),
 	)
+	if headful {
+		// A visible window the operator can actually use.
+		opts = append(opts, chromedp.Flag("start-maximized", true))
+	}
 
 	ctx, cancel2 := chromedp.NewExecAllocator(ctx, opts...)
 	ctx, cancel3 := chromedp.NewContext(ctx)
 
-	// Return combined cancel function
 	return ctx, func() {
 		cancel3()
 		cancel2()

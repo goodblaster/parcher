@@ -1,0 +1,24 @@
+#!/usr/bin/env rx
+# Log in, then extract data from a page behind the login.
+#
+# Two ways to supply the login, both keeping secrets out of this file:
+#
+#   1) Interactive: run with `rx -show` and let a human log in by hand at the
+#      wait:user pause. No credentials stored anywhere.
+#
+#   2) Automated: put credentials in a gitignored secrets.json, uncomment the
+#      `vars:` line and the `apply-login.js` step. apply-login.js reads
+#      vars.username / vars.password and fills the form — the values never
+#      appear in any committed file.
+
+prep: minimal
+
+# --- automated login (uncomment to use) ---
+# vars: ./secrets.json
+# apply-login.js
+
+# --- interactive login ---
+wait:user
+
+# now on an authenticated page — extract whatever you need
+@article:content

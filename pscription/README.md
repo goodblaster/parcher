@@ -12,21 +12,47 @@ serializer.
 
 ## Usage
 
+`rx` runs a pscription against a URL and prints a JSON report of what the
+scripts returned. Steps are positional and run in order.
+
 ```bash
 go build -o bin/ ./cmd/...
 
-./bin/rx https://example.com                  # staticize + capture → example.com.html
-./bin/rx -backend mht|screenshot ...
-./bin/rx -links keep|new-tab|disable ...
-./bin/rx https://example.com > page.html      # content on stdout when piped
+# built-in article extractor, print just the text
+./bin/rx https://test-site-7/wiki/Web_archiving @article -only content
+
+# your own page-context scripts, in order, capturing named outputs
+./bin/rx https://shop.com dismiss.js load-more.js prices.js:prices | jq .outputs.prices
+
+# crawler without a crawler
+./bin/rx https://blog.site @links -only links | jq -r '.[].url' | xargs -n1 parch
+
+# a .rx pscription file (or make it executable with a #!/usr/bin/env rx line)
+./bin/rx -f login-and-extract.rx https://portal.site
+./login-and-extract.rx https://portal.site
+
+# log in by hand in a visible browser, then extract
+./bin/rx -show https://portal.site wait:user @article:content
 ```
 
-Requires a Chrome/Chromium installation (launched headless via the DevTools
+**Steps:** `<name>` a built-in step (`dismiss-popups`, `wait-quiet`, …) ·
+`@name[:out]` a built-in script (`@article`, `@links`) · `path.js[:out]`
+your own script · `wait:user` / `wait:2s`. The `:out` suffix captures a
+script's return value into the report's `outputs`.
+
+**Prep** (`-prep`): `none`, `minimal` (default — dialogs cleared, content
+loaded), or `staticize` (full self-contained preparation).
+
+**Scripts** are parenthesized functions receiving the pscription's `vars` as
+their argument — `((vars) => ({...}))` or the async forms. Output on stdout
+is the JSON report (or one value with `-only`); logs go to stderr; exit
+status is non-zero if a step failed.
+
+Requires a Chrome/Chromium installation (launched via the DevTools
 protocol). Everything else is compiled into the binary.
 
-**Roadmap:** `.rx` pscription files (built-in steps by name + your own
-scripts, shebang-executable) with a JSON report on stdout —
-`./prices.rx https://shop.com | jq .outputs.prices`.
+See [examples/](examples) for `.rx` files including the credential-separation
+pattern (secrets in a gitignored JSON, applied by committed logic).
 
 ## Architecture
 

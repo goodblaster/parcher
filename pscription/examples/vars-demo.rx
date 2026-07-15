@@ -1,0 +1,11 @@
+#!/usr/bin/env rx
+# Demonstrates variables + credential separation.
+# The secrets live in secrets.example.json (a separate, normally-gitignored
+# file); this pscription references them, and vars-demo.js applies them
+# without ever containing the values.
+
+prep: none
+var: greeting=hello
+vars: ./secrets.example.json
+
+vars-demo.js:seen

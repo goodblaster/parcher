@@ -82,6 +82,11 @@ func (r Recipe) Action() chromedp.ActionFunc {
 	}
 }
 
+// NamedStep wraps an action as a named step (ContinueOnError false).
+func NamedStep(name string, action chromedp.ActionFunc) Step {
+	return Step{Name: name, Action: action}
+}
+
 // Sleep is a named fixed pause. Prefer condition-based waits (network idle,
 // images loaded); use Sleep only where no observable condition exists.
 func Sleep(name string, d time.Duration) Step {

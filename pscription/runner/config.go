@@ -28,6 +28,10 @@ type Config struct {
 	// Actions executed after browser setup but before navigation
 	// (cookie seeding, evaluate-on-new-document scripts, request blocking)
 	PreNavigate []chromedp.Action
+
+	// Headful launches a visible browser instead of headless. Required for
+	// interactive steps like wait-for-user (manual login).
+	Headful bool
 }
 
 // DefaultConfig returns sensible defaults

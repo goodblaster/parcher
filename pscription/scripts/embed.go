@@ -51,3 +51,31 @@ const (
 	ExtractLinks       ScriptFile = "util/extract_links.js"
 	ConvertToGrayscale ScriptFile = "util/convert_to_grayscale.js"
 )
+
+// Built-in extraction scripts, referenced in a pscription as "@name".
+const (
+	ExtractArticle   ScriptFile = "extract/article.js"
+	ExtractPageLinks ScriptFile = "extract/links.js"
+)
+
+// builtinScripts maps the "@name" reference to its embedded script.
+var builtinScripts = map[string]ScriptFile{
+	"article": ExtractArticle,
+	"links":   ExtractPageLinks,
+}
+
+// BuiltinScript resolves a "@name" reference (without the @) to an embedded
+// extraction script.
+func BuiltinScript(name string) (ScriptFile, bool) {
+	sf, ok := builtinScripts[name]
+	return sf, ok
+}
+
+// BuiltinScriptNames lists the available "@name" scripts.
+func BuiltinScriptNames() []string {
+	names := make([]string, 0, len(builtinScripts))
+	for name := range builtinScripts {
+		names = append(names, name)
+	}
+	return names
+}
