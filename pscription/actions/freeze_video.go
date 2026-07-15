@@ -5,7 +5,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
-	js "github.com/goodblaster/webrun/scripts"
+	js "github.com/goodblaster/pscription/scripts"
 )
 
 func CaptureVideoFrame() chromedp.ActionFunc {

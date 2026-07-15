@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/chromedp/chromedp"
-	js "github.com/goodblaster/webrun/scripts"
+	js "github.com/goodblaster/pscription/scripts"
 )
 
 func RunScript(script js.ScriptFile, res any, params ...any) chromedp.ActionFunc {

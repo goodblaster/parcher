@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/chromedp/chromedp"
-	js "github.com/goodblaster/webrun/scripts"
+	js "github.com/goodblaster/pscription/scripts"
 )
 
 func RasterizeFontIcons() chromedp.ActionFunc {

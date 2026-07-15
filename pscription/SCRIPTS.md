@@ -44,7 +44,7 @@ These run in the `pipeline.Staticize()` recipe, in roughly this order.
 | `scroll_and_wait_images.js` | async | Scrolls the viewport through the page top→bottom in sequential steps (fires IntersectionObserver/scroll lazy loaders), re-checking page height as content grows, then returns to top. Params: `stepDelayMs` (250), `maxMs` (15000). |
 | `wait_for_images.js` | async | Waits until `<img>` elements settle (polling `complete`) and probes CSS background URLs (including `::before`/`::after`) via `Image()`. Every probe has its own timeout — a stalled image cannot hang the wait. Param: `maxWaitMs`. |
 | `normalize_viewport_units.js` | sync | Rewrites `100vh` (and `calc(...100vh...)`) heights in stylesheets and inline styles to prevent huge blank regions in full-page captures. Not in the default recipe; layout-altering, use per-site. |
-| `rewrite_links.js` | sync | Optional link policy, applied only when requested (default: links untouched). `"new-tab"`: external links get `target=_blank rel=noopener`. `"disable"`: hrefs stay (they're archived information and removing them changes `:link` styling) but pointer-events CSS makes them unclickable; form actions parked in `data-gb-action`. Fragment/mailto/tel links stay live in every mode. `webrun -links keep\|new-tab\|disable`. |
+| `rewrite_links.js` | sync | Optional link policy, applied only when requested (default: links untouched). `"new-tab"`: external links get `target=_blank rel=noopener`. `"disable"`: hrefs stay (they're archived information and removing them changes `:link` styling) but pointer-events CSS makes them unclickable; form actions parked in `data-gb-action`. Fragment/mailto/tel links stay live in every mode. `rx -links keep\|new-tab\|disable`. |
 
 ## Media Handling (`media/`)
 

@@ -11,8 +11,8 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/webrun/internal/log"
-	js "github.com/goodblaster/webrun/scripts"
+	"github.com/goodblaster/pscription/internal/log"
+	js "github.com/goodblaster/pscription/scripts"
 )
 
 // consentCookies are cookies that widely-deployed consent/age-gate plugins

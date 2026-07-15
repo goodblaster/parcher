@@ -6,7 +6,7 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/webrun/internal/log"
+	"github.com/goodblaster/pscription/internal/log"
 )
 
 // WaitForNetworkIdle waits for network activity to stop

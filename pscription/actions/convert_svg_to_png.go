@@ -2,7 +2,7 @@ package actions
 
 import (
 	"github.com/chromedp/chromedp"
-	js "github.com/goodblaster/webrun/scripts"
+	js "github.com/goodblaster/pscription/scripts"
 )
 
 func ConvertSvgToPng(selector string, png *string) chromedp.ActionFunc {

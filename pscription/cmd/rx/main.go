@@ -1,11 +1,13 @@
-// webrun loads a URL, runs a preparation recipe, and captures the page.
-// It is the reference CLI for the webrun capture library: it loads a URL, runs a
+// rx executes a pscription — an ordered list of preparation steps and
+// scripts — against a URL in a headless browser.
+// Interim behavior: capture-harness CLI; the .rx pscription file format and
+// JSON report output are the next feature: it loads a URL, runs a
 // preparation recipe, and captures the page with a chosen backend.
 //
-//	webrun https://example.com                    → example.com.html (SingleFile)
-//	webrun -backend mht https://example.com       → example.com.mht
-//	webrun -o page.html https://example.com
-//	webrun https://example.com > page.html        (content to stdout when piped)
+//	rx https://example.com                    → example.com.html (SingleFile)
+//	rx -backend mht https://example.com       → example.com.mht
+//	rx -o page.html https://example.com
+//	rx https://example.com > page.html        (content to stdout when piped)
 //
 // Logs always go to stderr; captured content goes to the output file, or to
 // stdout when -o - is given or stdout is not a terminal.
@@ -20,10 +22,10 @@ import (
 	"time"
 
 	"github.com/goodblaster/logos"
-	"github.com/goodblaster/webrun/capture"
-	"github.com/goodblaster/webrun/internal/common"
-	"github.com/goodblaster/webrun/internal/log"
-	"github.com/goodblaster/webrun/pipeline"
+	"github.com/goodblaster/pscription/capture"
+	"github.com/goodblaster/pscription/internal/common"
+	"github.com/goodblaster/pscription/internal/log"
+	"github.com/goodblaster/pscription/pipeline"
 )
 
 func main() {

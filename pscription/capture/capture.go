@@ -10,8 +10,8 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/webrun/pipeline"
-	"github.com/goodblaster/webrun/runner"
+	"github.com/goodblaster/pscription/pipeline"
+	"github.com/goodblaster/pscription/runner"
 )
 
 // Snapshot is the result of capturing a page.

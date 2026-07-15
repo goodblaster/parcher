@@ -5,9 +5,9 @@ import (
 
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/webrun/internal/config"
-	"github.com/goodblaster/webrun/internal/log"
-	js "github.com/goodblaster/webrun/scripts"
+	"github.com/goodblaster/pscription/internal/config"
+	"github.com/goodblaster/pscription/internal/log"
+	js "github.com/goodblaster/pscription/scripts"
 )
 
 type EmbedResult struct {

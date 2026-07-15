@@ -4,8 +4,8 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/webrun/agents"
-	"github.com/goodblaster/webrun/internal/config"
+	"github.com/goodblaster/pscription/agents"
+	"github.com/goodblaster/pscription/internal/config"
 )
 
 // Config holds configuration for the script runner

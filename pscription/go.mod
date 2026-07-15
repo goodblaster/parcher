@@ -1,4 +1,4 @@
-module github.com/goodblaster/webrun
+module github.com/goodblaster/pscription
 
 go 1.25.4
 

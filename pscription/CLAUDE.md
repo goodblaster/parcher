@@ -4,22 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**webrun** is a browser script-running and page-capture library plus CLI. It drives headless Chrome (chromedp), runs a pipeline of named preparation steps (dismiss dialogs, defeat lazy loading, freeze videos, embed resources as data URIs), and captures the prepared page as a single self-contained snapshot.
+**pscription** is a browser script-running and page-capture library; **rx** is its CLI. A "pscription" (like a doctor's ℞ — Latin *recipe*, "take thou") is an ordered list of preparation steps and scripts executed against a live page. It drives headless Chrome (chromedp), runs a pipeline of named preparation steps (dismiss dialogs, defeat lazy loading, freeze videos, embed resources as data URIs), and captures the prepared page as a single self-contained snapshot.
 
 **Primary Language:** Go 1.24
 **Runtime requirement:** a Chrome/Chromium installation (not bundled).
 
-This repo was extracted from `goodblaster/zim` (working dir `zim`, formerly module `webtools`). A second tool — the snapshot CLI with OCR/search (name TBD) — will consume this library; its parked code (OCR engines, text search, MHT indexing) still lives in the old repo under `pkg/`.
+This repo (formerly "webrun") was extracted from `goodblaster/zim` (working dir `zim`, formerly module `webtools`). A second tool — parchmint (binary `parch`, the page archiver) — will consume this library; its parked code (OCR engines, text search, MHT indexing) still lives in the old repo under `pkg/`.
 
 ## Build & Run
 
 ```bash
 go build -o bin/ ./cmd/...
-./bin/webrun https://example.com                # → example.com.html (SingleFile backend)
-./bin/webrun -backend mht|screenshot ...
-./bin/webrun -links keep|new-tab|disable ...    # default keep: links untouched
-./bin/webrun -v ...                             # debug logging (per-step timings)
-./bin/webrun https://example.com > page.html    # content → stdout when piped; logs → stderr always
+./bin/rx https://example.com                # → example.com.html (SingleFile backend)
+./bin/rx -backend mht|screenshot ...
+./bin/rx -links keep|new-tab|disable ...    # default keep: links untouched
+./bin/rx -v ...                             # debug logging (per-step timings)
+./bin/rx https://example.com > page.html    # content → stdout when piped; logs → stderr always
 ```
 
 No test suite yet. Verify changes by capturing the three reference sites and screenshotting them offline (see "Verification" below).

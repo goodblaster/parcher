@@ -11,7 +11,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/logos"
-	js "github.com/goodblaster/webrun/scripts"
+	js "github.com/goodblaster/pscription/scripts"
 )
 
 // FetchAndInjectBackgrounds extracts background image URLs, fetches them server-side, and injects as data URIs

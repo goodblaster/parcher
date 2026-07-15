@@ -5,7 +5,7 @@ import (
 	"regexp"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/webrun/actions"
+	"github.com/goodblaster/pscription/actions"
 )
 
 // MHT captures the page as an MHTML document (Chrome's Page.captureSnapshot).

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/webrun/internal/log"
+	"github.com/goodblaster/pscription/internal/log"
 )
 
 // Step is a single named unit of browser work.
