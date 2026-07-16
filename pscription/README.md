@@ -18,8 +18,8 @@ scripts returned. Steps are positional and run in order.
 ```bash
 go build -o bin/ ./cmd/...
 
-# built-in article extractor, print just the text
-./bin/rx https://test-site-7/wiki/Web_archiving @article -only content
+# built-in article extractor; @article auto-captures under "article"
+./bin/rx https://test-site-7/wiki/Web_archiving @article -only article
 
 # your own page-context scripts, in order, capturing named outputs
 ./bin/rx https://shop.com dismiss.js load-more.js prices.js:prices | jq .outputs.prices
@@ -32,7 +32,7 @@ go build -o bin/ ./cmd/...
 ./login-and-extract.rx https://portal.site
 
 # log in by hand in a visible browser, then extract
-./bin/rx -show https://portal.site wait:user @article:content
+./bin/rx -show https://portal.site wait:user @article
 ```
 
 **Steps:** `<name>` a built-in step (`dismiss-popups`, `wait-quiet`, …) ·

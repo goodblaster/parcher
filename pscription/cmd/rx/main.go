@@ -22,6 +22,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -36,6 +37,7 @@ func main() {
 		file    string
 		prep    string
 		only    string
+		profile string
 		headful bool
 		timeout int
 		verbose bool
@@ -55,6 +57,7 @@ func main() {
 	flag.StringVar(&file, "f", "", "run a .rx pscription file instead of inline steps")
 	flag.StringVar(&prep, "prep", "", "prep phase: none, minimal (default), staticize")
 	flag.StringVar(&only, "only", "", "print just this output value (raw), not the full report")
+	flag.StringVar(&profile, "profile", "", "persistent Chrome user-data dir; log in once (with -show) and reuse the session on later runs")
 	flag.BoolVar(&headful, "show", false, "launch a visible browser (needed for wait:user)")
 	flag.IntVar(&timeout, "timeout", 120, "timeout in seconds")
 	flag.BoolVar(&verbose, "v", false, "debug logging")
@@ -71,7 +74,7 @@ func main() {
 	}
 	log.SetDefault(log.LogosAdapter(logos.NewLogger(level, logos.ConsoleFormatter(), os.Stderr)))
 	if err := common.Init(); err != nil {
-		log.WithError(err).Fatal("initialization failed")
+		die(err)
 	}
 
 	args := flag.Args()
@@ -99,13 +102,13 @@ func main() {
 	if file != "" {
 		p, err = pscription.ParseFile(file)
 		if err != nil {
-			log.WithError(err).Fatal("failed to parse pscription")
+			die(err)
 		}
 	} else {
 		cwd, _ := os.Getwd()
 		steps, err := pscription.ParseTokens(args[1:], cwd)
 		if err != nil {
-			log.WithError(err).Fatal("failed to parse steps")
+			die(err)
 		}
 		p = &pscription.Pscription{Steps: steps}
 	}
@@ -117,19 +120,29 @@ func main() {
 	if headful {
 		p.Headful = true
 	}
+	if profile != "" {
+		dir, err := prepareProfileDir(profile)
+		if err != nil {
+			die(err)
+		}
+		profile = dir
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
 	log.With("url", url).With("steps", len(p.Steps)).With("prep", firstNonEmpty(p.Prep, "minimal")).Info("running pscription")
 
-	report, err := p.Run(ctx, url, pscription.Options{Timeout: time.Duration(timeout) * time.Second})
+	report, err := p.Run(ctx, url, pscription.Options{
+		Timeout: time.Duration(timeout) * time.Second,
+		Profile: profile,
+	})
 	if err != nil {
-		log.WithError(err).Fatal("run failed")
+		die(err)
 	}
 
 	if err := emit(report, only); err != nil {
-		log.WithError(err).Fatal("failed to write report")
+		die(err)
 	}
 
 	if !report.OK {
@@ -178,6 +191,29 @@ func firstNonEmpty(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// die prints a clean error to stderr and exits 1 — never a Go panic/stack
+// trace (logos.Fatal panics, which is wrong for user-facing errors).
+func die(err error) {
+	fmt.Fprintln(os.Stderr, "rx: "+err.Error())
+	os.Exit(1)
+}
+
+// prepareProfileDir expands ~ and ensures the persistent profile directory
+// exists.
+func prepareProfileDir(dir string) (string, error) {
+	if strings.HasPrefix(dir, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Join(home, dir[2:])
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("cannot create profile dir %q: %w", dir, err)
+	}
+	return dir, nil
 }
 
 // reorderFlags moves flag tokens ahead of positional tokens so trailing

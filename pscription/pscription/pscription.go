@@ -52,6 +52,7 @@ type Step struct {
 type Pscription struct {
 	Prep    string         // "none" | "minimal" | "staticize" (default minimal)
 	Headful bool           // launch a visible browser (needed for wait:user)
+	Profile string         // persistent Chrome user-data dir (reuse a login)
 	Vars    map[string]any // passed as the first argument to every script
 	Steps   []Step
 }
@@ -59,6 +60,8 @@ type Pscription struct {
 // Options controls a run.
 type Options struct {
 	Timeout time.Duration
+	// Profile overrides the pscription's Profile (persistent user-data dir).
+	Profile string
 }
 
 // StepResult records how one step went.
@@ -96,6 +99,7 @@ func (p *Pscription) Run(ctx context.Context, url string, opts Options) (*Report
 		cfg.Timeout = opts.Timeout
 	}
 	cfg.Headful = p.Headful
+	cfg.UserDataDir = firstNonEmpty(opts.Profile, p.Profile)
 	cfg.PreNavigate = prep.PreNavigateActions(url)
 
 	session, err := runner.Start(ctx, url, cfg)
@@ -254,6 +258,13 @@ func stepLabel(step Step) string {
 	default:
 		return step.Ref
 	}
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 // JSON renders the report as indented JSON.

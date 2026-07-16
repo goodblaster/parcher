@@ -2,7 +2,6 @@ package runner
 
 import (
 	"context"
-	"time"
 
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
@@ -42,7 +41,7 @@ func (s *Session) Context() context.Context { return s.ctx }
 // navigates to url, and waits for the page to be ready. The returned Session
 // is live until Close.
 func Start(ctx context.Context, url string, cfg Config) (*Session, error) {
-	ctx, cancel := createBrowserContext(ctx, cfg.Timeout, cfg.Headful)
+	ctx, cancel := createBrowserContext(ctx, cfg)
 
 	// Auto-accept JavaScript dialogs (alert/confirm/beforeunload).
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
@@ -81,20 +80,31 @@ func (s *Session) Run(actions ...chromedp.ActionFunc) error {
 	return nil
 }
 
-// Close tears down the browser.
-func (s *Session) Close() { s.cancel() }
+// Close tears down the browser. It first asks Chrome to close gracefully so
+// a persistent profile flushes cookies and localStorage to disk (an abrupt
+// kill loses unwritten session state, defeating -profile); then it releases
+// the allocator and timeout contexts.
+func (s *Session) Close() {
+	_ = chromedp.Cancel(s.ctx)
+	s.cancel()
+}
 
 // createBrowserContext creates a chromedp context with timeout and headless
 // (or headful) configuration.
-func createBrowserContext(ctx context.Context, timeout time.Duration, headful bool) (context.Context, context.CancelFunc) {
-	ctx, cancel1 := context.WithTimeout(ctx, timeout)
+func createBrowserContext(ctx context.Context, cfg Config) (context.Context, context.CancelFunc) {
+	ctx, cancel1 := context.WithTimeout(ctx, cfg.Timeout)
 
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", !headful),
+		chromedp.Flag("headless", !cfg.Headful),
 	)
-	if headful {
+	if cfg.Headful {
 		// A visible window the operator can actually use.
 		opts = append(opts, chromedp.Flag("start-maximized", true))
+	}
+	if cfg.UserDataDir != "" {
+		// A persistent profile: session cookies and localStorage survive
+		// across runs, so a one-time login can be reused.
+		opts = append(opts, chromedp.UserDataDir(cfg.UserDataDir))
 	}
 
 	ctx, cancel2 := chromedp.NewExecAllocator(ctx, opts...)

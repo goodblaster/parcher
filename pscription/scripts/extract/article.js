@@ -14,7 +14,10 @@
     const junk = 'script, style, noscript, nav, header, footer, aside, form, ' +
         'iframe, svg, [role="navigation"], [role="banner"], [role="complementary"], ' +
         '[aria-hidden="true"], .nav, .menu, .sidebar, .ad, .ads, .advert, ' +
-        '.promo, .social, .share, .comment, .comments, .related, .newsletter, .cookie';
+        '.promo, .social, .share, .comment, .comments, .related, .newsletter, .cookie, ' +
+        // MediaWiki / common CMS chrome that lives inside the content region
+        '.vector-page-toolbar, .mw-editsection, .mw-jump-link, .toc, #toc, ' +
+        '.navbox, .catlinks, .printfooter, .mw-indicators, [role="note"], figure .mw-mmv-status';
     doc.querySelectorAll(junk).forEach((el) => el.remove());
 
     const textLen = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim().length;

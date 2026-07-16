@@ -34,8 +34,17 @@ func ParseStep(token, baseDir string) (Step, error) {
 
 	switch {
 	case strings.HasPrefix(ref, "@"):
-		return Step{Kind: KindBuiltinScript, Ref: strings.TrimPrefix(ref, "@"), Out: out}, nil
+		name := strings.TrimPrefix(ref, "@")
+		// Auto-name the output after the script (@article → "article") so
+		// -only and jq have a predictable key even without an explicit :out.
+		if out == "" {
+			out = name
+		}
+		return Step{Kind: KindBuiltinScript, Ref: name, Out: out}, nil
 	case strings.HasSuffix(ref, ".js"):
+		if out == "" {
+			out = defaultOutName(ref)
+		}
 		if baseDir != "" && !filepath.IsAbs(ref) {
 			ref = filepath.Join(baseDir, ref)
 		}
@@ -46,6 +55,19 @@ func ParseStep(token, baseDir string) (Step, error) {
 		}
 		return Step{Kind: KindBuiltin, Ref: ref}, nil
 	}
+}
+
+// defaultOutName derives an output key from a script path: the base name
+// without the .js extension, with unfriendly characters replaced.
+func defaultOutName(path string) string {
+	base := filepath.Base(path)
+	base = strings.TrimSuffix(base, ".js")
+	return strings.Map(func(r rune) rune {
+		if r == '_' || r == '-' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return '_'
+	}, base)
 }
 
 // splitCapture separates a "ref:out" token. The capture name must be a bare
@@ -145,7 +167,7 @@ func directive(line string) (key, val string, ok bool) {
 	key = strings.TrimSpace(line[:i])
 	val = strings.TrimSpace(line[i+1:])
 	switch key {
-	case "prep", "headful", "vars", "var":
+	case "prep", "headful", "vars", "var", "profile":
 		return key, val, true
 	}
 	return "", "", false
@@ -157,6 +179,16 @@ func (p *Pscription) applyDirective(key, val, baseDir string) error {
 		p.Prep = val
 	case "headful":
 		p.Headful = val == "true" || val == "yes" || val == "1"
+	case "profile":
+		path := val
+		if strings.HasPrefix(path, "~/") {
+			if home, err := os.UserHomeDir(); err == nil {
+				path = filepath.Join(home, path[2:])
+			}
+		} else if !filepath.IsAbs(path) {
+			path = filepath.Join(baseDir, path)
+		}
+		p.Profile = path
 	case "vars":
 		path := val
 		if !filepath.IsAbs(path) {

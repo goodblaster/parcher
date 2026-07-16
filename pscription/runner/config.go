@@ -32,6 +32,13 @@ type Config struct {
 	// Headful launches a visible browser instead of headless. Required for
 	// interactive steps like wait-for-user (manual login).
 	Headful bool
+
+	// UserDataDir points Chrome at a persistent profile directory instead of
+	// a throwaway one. Logging in once (headful) leaves the session in this
+	// dir, so later runs — even headless — reuse it until it expires. Empty
+	// means an ephemeral profile (the default). The directory must not be in
+	// use by another Chrome instance.
+	UserDataDir string
 }
 
 // DefaultConfig returns sensible defaults
