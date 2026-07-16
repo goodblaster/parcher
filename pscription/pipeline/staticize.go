@@ -85,12 +85,14 @@ func Staticize() Recipe {
 
 			// Late-loading popups, then a final sweep before capture:
 			// heuristic dismissal, then geometry-based demolition of
-			// anything still covering the page.
+			// anything still covering the page. A short quiet-wait lets the
+			// last DOM edits (overlay removal) paint; it returns as soon as
+			// things settle instead of always burning a fixed pause.
 			step("wait-network-idle", actions.WaitForNetworkIdle(10*time.Second)),
 			stepIgnoreError("dismiss-cmp", actions.RunScriptIgnoreError(js.DismissCMP, nil)),
 			stepIgnoreError("dismiss-popups", actions.DismissPopups()),
 			stepIgnoreError("remove-blocking-overlays", actions.RunScriptIgnoreError(js.RemoveBlockingOverlays, nil)),
-			Sleep("settle", 500*time.Millisecond),
+			stepIgnoreError("wait-quiet", actions.RunScriptIgnoreError(js.WaitForQuiet, nil, 300, 1000)),
 		},
 	}
 }
