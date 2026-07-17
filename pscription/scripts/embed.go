@@ -34,6 +34,7 @@ const (
 const (
 	ExtractBackgroundURLs  ScriptFile = "resources/extract_background_urls.js"
 	InjectBackgroundImages ScriptFile = "resources/inject_background_images.js"
+	ExtractFontFaces       ScriptFile = "resources/extract_font_faces.js"
 	ExtractImageURLs       ScriptFile = "resources/extract_image_urls.js"
 	InjectImages           ScriptFile = "resources/inject_images.js"
 	EmbedImages            ScriptFile = "resources/embed_images.js"

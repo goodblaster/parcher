@@ -1,0 +1,152 @@
+package actions
+
+import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"io"
+	"net/http"
+	neturl "net/url"
+	"strings"
+	"time"
+
+	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/logos"
+	js "github.com/goodblaster/pscription/scripts"
+)
+
+// fontFace mirrors one @font-face rule extracted from the page.
+type fontFace struct {
+	Family       string   `json:"family"`
+	Style        string   `json:"style"`
+	Weight       string   `json:"weight"`
+	Stretch      string   `json:"stretch"`
+	UnicodeRange string   `json:"unicodeRange"`
+	Display      string   `json:"display"`
+	URLs         []string `json:"urls"`
+}
+
+// FetchAndInjectFonts embeds the page's web fonts as data: URIs. Chrome's
+// MHTML snapshot omits CSS web fonts entirely, so without this an MHT
+// archive falls back to system fonts and icon fonts (Font Awesome dropdown
+// carets, etc.) render as tofu boxes. It fetches each @font-face source
+// server-side — which also sidesteps the CORS restriction that normally
+// applies to cross-origin fonts — and injects overriding @font-face rules
+// with the same descriptors, so the data: source wins offline.
+//
+// Harmless to the SingleFile backend, which already inlines fonts.
+func FetchAndInjectFonts() chromedp.ActionFunc {
+	return func(ctx context.Context) error {
+		var faces []fontFace
+		if err := chromedp.Run(ctx, js.ExtractFontFaces.Action(&faces)); err != nil {
+			return fmt.Errorf("failed to extract font faces: %w", err)
+		}
+		if len(faces) == 0 {
+			logos.Info("no web fonts to fetch")
+			return nil
+		}
+
+		client := &http.Client{Timeout: 30 * time.Second}
+		var css strings.Builder
+		embedded, failed := 0, 0
+
+		for _, face := range faces {
+			dataURL, format, ok := fetchFirstFont(client, face.URLs)
+			if !ok {
+				failed++
+				continue
+			}
+			css.WriteString("@font-face{")
+			fmt.Fprintf(&css, "font-family:%s;", face.Family)
+			if face.Style != "" {
+				fmt.Fprintf(&css, "font-style:%s;", face.Style)
+			}
+			if face.Weight != "" {
+				fmt.Fprintf(&css, "font-weight:%s;", face.Weight)
+			}
+			if face.Stretch != "" {
+				fmt.Fprintf(&css, "font-stretch:%s;", face.Stretch)
+			}
+			if face.Display != "" {
+				fmt.Fprintf(&css, "font-display:%s;", face.Display)
+			}
+			fmt.Fprintf(&css, "src:url(%s)", dataURL)
+			if format != "" {
+				fmt.Fprintf(&css, " format('%s')", format)
+			}
+			css.WriteString(";")
+			if face.UnicodeRange != "" {
+				fmt.Fprintf(&css, "unicode-range:%s;", face.UnicodeRange)
+			}
+			css.WriteString("}")
+			embedded++
+		}
+
+		logos.With("embedded", embedded).With("failed", failed).Info("embedded web fonts")
+		if embedded == 0 {
+			return nil
+		}
+
+		// Inject as a single late <style> so these data: sources win the
+		// cascade over the original external @font-face rules.
+		return chromedp.Run(ctx, js.InjectCss.Action(nil, "gb-embedded-fonts", css.String()))
+	}
+}
+
+// fetchFirstFont fetches the first URL that succeeds, returning its data URL
+// and a CSS format() hint.
+func fetchFirstFont(client *http.Client, urls []string) (dataURL, format string, ok bool) {
+	for _, url := range urls {
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+		req.Header.Set("Accept", "*/*")
+		// Many sites hotlink-protect fonts by Referer; present one matching
+		// the font's own origin so the fetch looks same-site.
+		if u, perr := neturl.Parse(url); perr == nil && u.Scheme != "" {
+			req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/")
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+		data, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil || resp.StatusCode != http.StatusOK || len(data) == 0 {
+			continue
+		}
+		mime, format := fontMIMEAndFormat(url, resp.Header.Get("Content-Type"))
+		encoded := base64.StdEncoding.EncodeToString(data)
+		return fmt.Sprintf("data:%s;base64,%s", mime, encoded), format, true
+	}
+	return "", "", false
+}
+
+// fontMIMEAndFormat returns the data-URI MIME type and the CSS format() hint
+// for a font, preferring the URL extension (content types for fonts are
+// frequently wrong or generic).
+func fontMIMEAndFormat(url, contentType string) (mime, format string) {
+	lower := strings.ToLower(url)
+	switch {
+	case strings.Contains(lower, ".woff2"):
+		return "font/woff2", "woff2"
+	case strings.Contains(lower, ".woff"):
+		return "font/woff", "woff"
+	case strings.Contains(lower, ".ttf"):
+		return "font/ttf", "truetype"
+	case strings.Contains(lower, ".otf"):
+		return "font/otf", "opentype"
+	case strings.Contains(lower, ".eot"):
+		return "application/vnd.ms-fontobject", "embedded-opentype"
+	}
+	// Fall back to the server's content type, no format hint.
+	if contentType != "" {
+		if i := strings.IndexByte(contentType, ';'); i >= 0 {
+			contentType = contentType[:i]
+		}
+		return strings.TrimSpace(contentType), ""
+	}
+	return "font/woff2", "woff2"
+}

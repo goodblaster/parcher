@@ -24,6 +24,13 @@ func (MHT) Ext() string  { return ".mht" }
 
 func (MHT) Action(snap *Snapshot) chromedp.ActionFunc {
 	return func(ctx context.Context) error {
+		// Chrome's MHTML snapshot omits CSS web fonts, so embed the ones
+		// the page actually loaded as data: URIs first — otherwise MHT
+		// archives lose icon fonts (tofu carets) and web-font text. (The
+		// SingleFile backend needs no such help; it inlines fonts itself.)
+		if err := actions.FetchAndInjectFonts()(ctx); err != nil {
+			return err
+		}
 		var content string
 		if err := actions.SaveMhtToString(&content)(ctx); err != nil {
 			return err

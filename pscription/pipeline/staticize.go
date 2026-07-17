@@ -81,6 +81,10 @@ func Staticize() Recipe {
 			step("rasterize-font-icons", actions.RasterizeFontIcons()),
 			step("fetch-images", actions.FetchAndInjectImages()),
 			step("fetch-backgrounds", actions.FetchAndInjectBackgrounds()),
+			// Note: web-font embedding is NOT here. SingleFile inlines fonts
+			// itself, so doing it in shared prep would double-embed them in
+			// HTML. Only Chrome's MHTML snapshot omits fonts, so the MHT
+			// backend embeds them (see capture/mht.go).
 			stepIgnoreError("wait-quiet", actions.RunScriptIgnoreError(js.WaitForQuiet, nil, 500, 2000)),
 
 			// Late-loading popups, then a final sweep before capture:
@@ -148,6 +152,7 @@ func init() {
 	Register("wait-images", func() Step { return step("wait-images", actions.WaitForImages(10*time.Second)) })
 	Register("fetch-images", func() Step { return step("fetch-images", actions.FetchAndInjectImages()) })
 	Register("fetch-backgrounds", func() Step { return step("fetch-backgrounds", actions.FetchAndInjectBackgrounds()) })
+	Register("fetch-fonts", func() Step { return step("fetch-fonts", actions.FetchAndInjectFonts()) })
 	Register("rasterize-font-icons", func() Step { return step("rasterize-font-icons", actions.RasterizeFontIcons()) })
 	Register("capture-video-frame", func() Step { return step("capture-video-frame", actions.CaptureVideoFrame()) })
 	Register("rewrite-links-new-tab", func() Step { return RewriteLinksStep("new-tab") })
