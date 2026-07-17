@@ -84,7 +84,18 @@ func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipe
 	}
 
 	if retryable {
-		if session.Run(detectDefect(&defect)) == nil && defect {
+		_ = session.Run(detectDefect(&defect))
+		if defect {
+			// Cheap in-session recovery before escalating to a full
+			// re-capture: sliders reliably initialize given the time the
+			// later prep steps take, but occasionally one is still pending
+			// here — give it a few more seconds in THIS session and re-check.
+			// A full retry (fresh navigation) only happens if that fails.
+			log.With("url", url).Debug("slider not yet initialized; recovering in-session")
+			_ = session.Run(js.WaitForSliders.Action(nil, 5000))
+			_ = session.Run(detectDefect(&defect))
+		}
+		if defect {
 			return nil, true, nil
 		}
 	}
