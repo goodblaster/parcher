@@ -21,6 +21,8 @@ const (
 	WaitForImages          ScriptFile = "page-prep/wait_for_images.js"
 	WaitForQuiet           ScriptFile = "page-prep/wait_for_quiet.js"
 	WaitForStableLayout    ScriptFile = "page-prep/wait_for_stable_layout.js"
+	WaitForSliders         ScriptFile = "page-prep/wait_for_sliders.js"
+	DetectSliderDefect     ScriptFile = "page-prep/detect_slider_defect.js"
 )
 
 // Media handling scripts
