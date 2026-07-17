@@ -103,15 +103,26 @@ async function captureVideoFrames() {
             video.parentNode.replaceChild(makeReplacement(video, video.poster), video);
             stats.posters++;
         } else {
-            video.pause();
-            video.style.setProperty('visibility', 'hidden', 'important');
+            collapseVideo(video);
             stats.hidden++;
         }
     }
 
+    // When a video can't be turned into a still (no frame, no poster), it
+    // must be COLLAPSED, not merely hidden: visibility:hidden keeps the
+    // element's box, leaving a tall blank gap in the archive (a hero video
+    // is often ~800px). display:none removes it from layout so the page
+    // flows naturally.
+    function collapseVideo(video) {
+        if (!video || !video.isConnected) return;
+        try { video.pause(); } catch (e) { /* ignore */ }
+        video.style.setProperty('display', 'none', 'important');
+    }
+
     const videos = Array.from(document.querySelectorAll('video'))
         .filter((v) => v.parentNode);
-    await Promise.all(videos.map((v) => freezeVideo(v).catch(() => { stats.hidden++; })));
+    await Promise.all(videos.map((v) =>
+        freezeVideo(v).catch(() => { collapseVideo(v); stats.hidden++; })));
 
     // YouTube embeds → thumbnail image (inlined by a later embed step).
     for (const iframe of document.querySelectorAll(
