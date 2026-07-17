@@ -20,6 +20,11 @@ const jpegQuality = 85
 
 func (JPEG) Action(snap *Snapshot) chromedp.ActionFunc {
 	return func(ctx context.Context) error {
+		// Fixed (parallax) backgrounds only paint in the first viewport of a
+		// full-page screenshot, leaving lower sections blank.
+		if err := normalizeBackgroundAttachment(ctx); err != nil {
+			return err
+		}
 		var buf []byte
 		// chromedp.FullScreenshot emits JPEG for any quality other than 100.
 		if err := chromedp.FullScreenshot(&buf, jpegQuality).Do(ctx); err != nil {

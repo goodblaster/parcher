@@ -62,3 +62,19 @@ func captureTitle(title *string) chromedp.ActionFunc {
 		return chromedp.Title(title).Do(ctx)
 	}
 }
+
+// normalizeBackgroundAttachment forces background-attachment:scroll. Chrome's
+// print pipeline (PDF) and full-page screenshots don't paint fixed (parallax)
+// backgrounds beyond the first viewport, so such sections come out blank —
+// and any white-on-dark text in them becomes invisible. Parallax is
+// meaningless in a static capture anyway. Used by the "flat" backends (PDF,
+// PNG, JPEG); the HTML/MHT backends render in a real browser and don't need
+// it. Background-attachment doesn't affect layout, so this triggers no
+// reflow.
+func normalizeBackgroundAttachment(ctx context.Context) error {
+	return chromedp.Evaluate(
+		`(() => { const s = document.createElement('style');
+			s.textContent = '*{background-attachment:scroll !important}';
+			(document.head || document.documentElement).appendChild(s); })()`,
+		nil).Do(ctx)
+}

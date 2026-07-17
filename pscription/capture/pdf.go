@@ -45,16 +45,9 @@ func (PDF) Action(snap *Snapshot) chromedp.ActionFunc {
 			return errors.Wrap(err, "failed to emulate screen media")
 		}
 
-		// Chrome's print pipeline does not render background-attachment:fixed
-		// (parallax) backgrounds — the section prints blank, and any
-		// white-on-dark text in it becomes invisible. Force scroll
-		// attachment; the parallax effect is meaningless in a static
-		// snapshot anyway. PDF-only, so it can't affect the other backends.
-		if err := chromedp.Evaluate(
-			`(() => { const s = document.createElement('style');
-				s.textContent = '*{background-attachment:scroll !important}';
-				(document.head || document.documentElement).appendChild(s); })()`,
-			nil).Do(ctx); err != nil {
+		// Fixed (parallax) backgrounds don't render in the print pipeline —
+		// the section prints blank and its white-on-dark text vanishes.
+		if err := normalizeBackgroundAttachment(ctx); err != nil {
 			return errors.Wrap(err, "failed to normalize background attachment")
 		}
 
