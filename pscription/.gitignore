@@ -24,3 +24,11 @@ go.work.sum
 # Real secrets (only the .example is committed)
 examples/secrets.json
 secrets.json
+
+# Capture outputs (never commit)
+*.html
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.mht
