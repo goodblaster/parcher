@@ -71,6 +71,12 @@ func Staticize() Recipe {
 			stepIgnoreError("force-image-loading", actions.RunScriptIgnoreError(js.ForceImageLoading, nil)),
 			step("wait-images", actions.WaitForImages(10*time.Second)),
 
+			// Let carousels/sliders/tab panels finish initializing before
+			// we freeze media and capture: until their JS runs, their slides
+			// render stacked (tripling page height) with a blank void where
+			// the active slide belongs. Wait for page height to settle.
+			stepIgnoreError("wait-stable-layout", actions.RunScriptIgnoreError(js.WaitForStableLayout, nil, 700, 8000)),
+
 			// Anything that popped up during scrolling.
 			stepIgnoreError("dismiss-popups", actions.DismissPopups()),
 			step("press-escape", pressEscape()),
@@ -150,6 +156,9 @@ func init() {
 		return stepIgnoreError("scroll-and-wait-images", actions.RunScriptIgnoreError(js.ScrollAndWaitImages, nil))
 	})
 	Register("wait-images", func() Step { return step("wait-images", actions.WaitForImages(10*time.Second)) })
+	Register("wait-stable-layout", func() Step {
+		return stepIgnoreError("wait-stable-layout", actions.RunScriptIgnoreError(js.WaitForStableLayout, nil, 700, 8000))
+	})
 	Register("fetch-images", func() Step { return step("fetch-images", actions.FetchAndInjectImages()) })
 	Register("fetch-backgrounds", func() Step { return step("fetch-backgrounds", actions.FetchAndInjectBackgrounds()) })
 	Register("fetch-fonts", func() Step { return step("fetch-fonts", actions.FetchAndInjectFonts()) })
