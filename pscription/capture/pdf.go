@@ -50,6 +50,11 @@ func (PDF) Action(snap *Snapshot) chromedp.ActionFunc {
 		if err := normalizeBackgroundAttachment(ctx); err != nil {
 			return errors.Wrap(err, "failed to normalize background attachment")
 		}
+		// Fixed elements repeat on every printed page (a fixed nav becomes a
+		// header on each page); flatten them so they appear once.
+		if err := flattenFixedPositioning(ctx); err != nil {
+			return errors.Wrap(err, "failed to flatten fixed positioning")
+		}
 
 		widthIn := float64(config.ViewWidth) / cssPxPerInch
 

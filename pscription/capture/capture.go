@@ -125,6 +125,27 @@ func captureTitle(title *string) chromedp.ActionFunc {
 	}
 }
 
+// flattenFixedPositioning converts position:fixed elements to absolute.
+// Chrome's print engine paints fixed elements on EVERY page, so a fixed nav
+// bar becomes a header repeated on every PDF page. Absolute stops that repeat
+// (only fixed repeats) while keeping the element out of normal flow — so,
+// unlike converting to static, it adds no height and can't tip a borderline
+// page into pagination. The element keeps its top/left placement and appears
+// once. Only fixed is touched — sticky already prints once in flow. PDF-only:
+// full-page screenshots aren't paginated, so fixed elements already appear
+// once there.
+func flattenFixedPositioning(ctx context.Context) error {
+	return chromedp.Evaluate(
+		`(() => {
+			for (const el of document.querySelectorAll('body *')) {
+				if (getComputedStyle(el).position === 'fixed') {
+					el.style.setProperty('position', 'absolute', 'important');
+				}
+			}
+		})()`,
+		nil).Do(ctx)
+}
+
 // normalizeBackgroundAttachment forces background-attachment:scroll. Chrome's
 // print pipeline (PDF) and full-page screenshots don't paint fixed (parallax)
 // backgrounds beyond the first viewport, so such sections come out blank —
