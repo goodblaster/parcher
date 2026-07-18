@@ -39,6 +39,15 @@ type Config struct {
 	// means an ephemeral profile (the default). The directory must not be in
 	// use by another Chrome instance.
 	UserDataDir string
+
+	// DiskCacheDir points Chrome's HTTP cache at a fixed directory that
+	// survives across runs, even with an ephemeral profile. Repeat loads of
+	// the same site then reuse cached CSS/JS/font/image responses (subject to
+	// normal cache-control revalidation) instead of refetching, which speeds
+	// up re-captures and archiving many pages from one site. Empty uses the
+	// profile's default (throwaway) cache. Unlike UserDataDir it holds no
+	// cookies or login state, so it's safe to share globally.
+	DiskCacheDir string
 }
 
 // DefaultConfig returns sensible defaults

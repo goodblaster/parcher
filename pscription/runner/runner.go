@@ -106,6 +106,11 @@ func createBrowserContext(ctx context.Context, cfg Config) (context.Context, con
 		// across runs, so a one-time login can be reused.
 		opts = append(opts, chromedp.UserDataDir(cfg.UserDataDir))
 	}
+	if cfg.DiskCacheDir != "" {
+		// A shared HTTP cache that outlives the (possibly throwaway) profile,
+		// so repeat loads reuse cached resources.
+		opts = append(opts, chromedp.Flag("disk-cache-dir", cfg.DiskCacheDir))
+	}
 
 	ctx, cancel2 := chromedp.NewExecAllocator(ctx, opts...)
 	ctx, cancel3 := chromedp.NewContext(ctx)
