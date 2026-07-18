@@ -1,0 +1,18 @@
+#!/usr/bin/env rx
+#
+# A pscription file (.rx): a named, ordered list of steps run against a page.
+# Mixes a built-in step with a custom script. Lines are steps unless they're
+# a `key: value` directive.
+#
+# Run it:
+#   rx -f headings.rx <url>
+#   rx headings.rx <url>          # .rx as the first arg works too
+#   ./headings.rx <url>           # or make it executable, if rx is on PATH
+#
+prep: minimal
+
+# built-in step: click through cookie/consent/age dialogs
+dismiss-popups
+
+# custom script (resolved relative to this .rx file); capture as "headings"
+collect-headings.js:headings
