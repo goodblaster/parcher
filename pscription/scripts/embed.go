@@ -60,12 +60,14 @@ const (
 const (
 	ExtractArticle   ScriptFile = "extract/article.js"
 	ExtractPageLinks ScriptFile = "extract/links.js"
+	ExtractText      ScriptFile = "extract/text.js"
 )
 
 // builtinScripts maps the "@name" reference to its embedded script.
 var builtinScripts = map[string]ScriptFile{
 	"article": ExtractArticle,
 	"links":   ExtractPageLinks,
+	"text":    ExtractText,
 }
 
 // BuiltinScript resolves a "@name" reference (without the @) to an embedded

@@ -1,4 +1,4 @@
-async function inlineImages() {
+async function embedImages() {
     // Helper to convert URL to data URL
     async function fetchAsDataURL(url) {
         try {
