@@ -32,8 +32,15 @@ func Staticize() Recipe {
 		// the page loads, so most banners decide they were already
 		// answered and never render.
 		PreNavigate: []PreNavFunc{
+			// Site CSPs without data: in img-src silently block every data
+			// URI the prep injects — broken-image placeholders in the
+			// live-rendering backends (pdf/png/jpeg/webp).
+			func(url string) chromedp.Action { return actions.BypassCSP() },
 			func(url string) chromedp.Action { return actions.PreseedConsentCookies(url) },
 			func(url string) chromedp.Action { return actions.PreseedConsentStorage() },
+			// WebGL drawing buffers must be preserved from the first frame
+			// or rasterize-canvases reads transparent black at capture time.
+			func(url string) chromedp.Action { return actions.ForceWebGLPreserve() },
 		},
 
 		Steps: []Step{
@@ -82,7 +89,19 @@ func Staticize() Recipe {
 			step("press-escape", pressEscape()),
 
 			// Freeze media first (creates <img> elements with external
-			// URLs), then embed everything as data URIs.
+			// URLs), then embed everything as data URIs. Canvas replacement
+			// produces data URIs directly, so its position relative to the
+			// embed steps doesn't matter — it lives here with the rest of
+			// the media freezing.
+			// warm-canvases first: rAF is throttled outside the viewport, so
+			// an animated canvas may not have painted a single frame yet; a
+			// canvas that never painted rasterizes and screenshots as an
+			// empty box. freeze-iframes then stills cross-origin iframes,
+			// whose pixels only exist while they are composited in-viewport
+			// (offscreen OOPIFs are blank even in captureBeyondViewport).
+			stepIgnoreError("warm-canvases", actions.WarmCanvases()),
+			stepIgnoreError("freeze-iframes", actions.FreezeOpaqueIframes()),
+			step("rasterize-canvases", actions.RasterizeCanvases()),
 			step("capture-video-frame", actions.CaptureVideoFrame()),
 			step("rasterize-font-icons", actions.RasterizeFontIcons()),
 			step("fetch-images", actions.FetchAndInjectImages()),
@@ -167,6 +186,9 @@ func init() {
 	Register("fetch-fonts", func() Step { return step("fetch-fonts", actions.FetchAndInjectFonts()) })
 	Register("rasterize-font-icons", func() Step { return step("rasterize-font-icons", actions.RasterizeFontIcons()) })
 	Register("capture-video-frame", func() Step { return step("capture-video-frame", actions.CaptureVideoFrame()) })
+	Register("warm-canvases", func() Step { return stepIgnoreError("warm-canvases", actions.WarmCanvases()) })
+	Register("freeze-iframes", func() Step { return stepIgnoreError("freeze-iframes", actions.FreezeOpaqueIframes()) })
+	Register("rasterize-canvases", func() Step { return step("rasterize-canvases", actions.RasterizeCanvases()) })
 	Register("rewrite-links-new-tab", func() Step { return RewriteLinksStep("new-tab") })
 	Register("rewrite-links-disable", func() Step { return RewriteLinksStep("disable") })
 }

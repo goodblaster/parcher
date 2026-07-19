@@ -23,14 +23,21 @@ const (
 	WaitForStableLayout    ScriptFile = "page-prep/wait_for_stable_layout.js"
 	WaitForSliders         ScriptFile = "page-prep/wait_for_sliders.js"
 	DetectSliderDefect     ScriptFile = "page-prep/detect_slider_defect.js"
+	PreserveWebGLBuffer    ScriptFile = "page-prep/preserve_webgl_buffer.js"
 )
 
 // Media handling scripts
 const (
-	CaptureVideoFrame ScriptFile = "media/capture_video_frame.js"
-	ConvertSvgToPng   ScriptFile = "media/convert_svg_to_png.js"
-	ConvertSvgToJpg   ScriptFile = "media/convert_svg_to_jpg.js"
-	LocateSvgElements ScriptFile = "media/locate_svg_elements.js"
+	CaptureVideoFrame      ScriptFile = "media/capture_video_frame.js"
+	ConvertSvgToPng        ScriptFile = "media/convert_svg_to_png.js"
+	ConvertSvgToJpg        ScriptFile = "media/convert_svg_to_jpg.js"
+	LocateSvgElements      ScriptFile = "media/locate_svg_elements.js"
+	WarmCanvases           ScriptFile = "media/warm_canvases.js"
+	RasterizeCanvases      ScriptFile = "media/rasterize_canvases.js"
+	ReplaceCanvasWithImage ScriptFile = "media/replace_canvas_with_image.js"
+	LocateOpaqueIframes    ScriptFile = "media/locate_opaque_iframes.js"
+	FocusOpaqueIframe      ScriptFile = "media/focus_opaque_iframe.js"
+	ReplaceIframeWithImage ScriptFile = "media/replace_iframe_with_image.js"
 )
 
 // Resource embedding scripts

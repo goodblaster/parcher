@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**pscription** is a browser script-running and page-capture library; **rx** is its CLI. A "pscription" (like a doctor's ℞ — Latin *recipe*, "take thou") is an ordered list of preparation steps and scripts executed against a live page. It drives headless Chrome (chromedp), runs a pipeline of named preparation steps (dismiss dialogs, defeat lazy loading, freeze videos, embed resources as data URIs), and captures the prepared page as a single self-contained snapshot.
+**pscription** is a browser script-running and page-capture library; **rx** is its CLI. A "pscription" (like a doctor's ℞ — Latin *recipe*, "take thou") is an ordered list of preparation steps and scripts executed against a live page. It drives headless Chrome (chromedp), runs a pipeline of named preparation steps (dismiss dialogs, defeat lazy loading, freeze videos and canvases to stills, embed resources as data URIs), and captures the prepared page as a single self-contained snapshot.
 
 **Primary Language:** Go 1.24
 **Runtime requirement:** a Chrome/Chromium installation (not bundled).
@@ -46,7 +46,12 @@ Capture flow: **runner** (browser session) → **pipeline** (preparation recipe)
 ## Hard-won invariants (violating these caused real bugs)
 
 - SingleFile capture must pass `blockScripts: true` (this vendored bundle's option name — it has no `removeScripts`). Keeping site JS means age gates re-run when the snapshot is opened.
-- Media freezing (`capture-video-frame`, `rasterize-font-icons`) must run BEFORE the embed steps — the `<img>`s they create (posters, YouTube thumbnails) carry external URLs that still need inlining.
+- Media freezing (`capture-video-frame`, `rasterize-font-icons`) must run BEFORE the embed steps — the `<img>`s they create (posters, YouTube thumbnails) carry external URLs that still need inlining. (`rasterize-canvases` is exempt: it produces data URIs directly.)
+- WebGL canvases are only readable because the `preserve_webgl_buffer.js` pre-navigation script forces `preserveDrawingBuffer` before any page JS runs; a WebGL context created without it reads back transparent black forever. Never demote it to an ordinary step.
+- Chrome throttles rAF for offscreen content, and offscreen cross-origin iframes (OOPIFs) are not rasterized AT ALL by full-page screenshots — `captureBeyondViewport` included. Hence `warm-canvases` (scroll blank canvases into view until they paint; a same-process canvas keeps its last frame) and `freeze-iframes` (screenshot each cross-origin iframe WHILE it is composited in-viewport, then swap in the still). Dwelling alone is useless for OOPIFs — their pixels don't persist offscreen; the shot must happen while visible.
+- MDN-style pages put their sample iframes inside open shadow roots — any script that enumerates canvases/iframes must pierce `shadowRoot`s, or it silently finds nothing.
+- Chrome's WebP encoder hard-fails (empty bytes, no error) above 16383px per dimension; `captureFullImage` clamps height and warns. Zero-byte screenshots are treated as errors, never written.
+- `actions.BypassCSP` (pre-navigation) is load-bearing for ALL injected data: URIs. A site CSP without data: in img-src silently blocks every injected image on the live page (`complete=true, naturalWidth=0`, broken-image placeholder) — which only shows up in the live-rendering backends (pdf/png/jpeg/webp), because saved HTML carries no CSP header and renders the same data URIs fine. test-site-4 (default-src 'self') is the reference case; debug with `document.querySelector('img').naturalWidth`.
 - Server-side fetchers must NOT set `Accept-Encoding` manually — it disables Go's transparent gzip decompression and gzip-served SVGs get embedded as compressed garbage.
 - `inject_images.js` removes `<source>` siblings inside `<picture>` — otherwise the external source keeps winning over the injected data URL.
 - Never remove elements matched by class alone without a structural guard — sites put state classes like `age-gate-open` on `<body>`.
@@ -60,10 +65,14 @@ Reference sites: `https://www.test-site-1` (videos, product tiles), `https://tes
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
   --proxy-server="http://127.0.0.1:9" --hide-scrollbars --window-size=1600,3000 \
-  --screenshot=out.png "file://$PWD/capture.html"
+  --virtual-time-budget=8000 --screenshot=out.png "file://$PWD/capture.html"
 ```
 
 Good captures have ~zero `src="http` references (grep) and no `<script>` tags except `application/ld+json`.
+
+Keep `--virtual-time-budget`: sites with entry CSS animations (e.g. test-site-5 fades everything in from `opacity:0` over ~1.5s) screenshot as a blank page without it — the archive is fine, the screenshot just fired too early.
+
+For canvas/WebGL work, `https://test-site-4` (WebGL cube) and `https://www.test-site-5` (2D chart canvases) are the reference sites.
 
 ## Conventions
 
