@@ -49,3 +49,23 @@ func (l *logosAdapter) With(key string, value any) Logger {
 func (l *logosAdapter) Print(a ...any) {
 	l.impl.Print(a...)
 }
+
+// logosDefault delegates to the logos package-level default logger AT CALL
+// TIME. It is this package's starting default so that a host application
+// (e.g. parch) that configures logos.SetDefaultLogger gets this library's
+// logs without needing access to this internal package. Binaries in this
+// module (rx) may still override via SetDefault.
+type logosDefault struct{}
+
+func (logosDefault) Debug(a ...any) { logos.Debug(a...) }
+func (logosDefault) Info(a ...any)  { logos.Info(a...) }
+func (logosDefault) Warn(a ...any)  { logos.Warn(a...) }
+func (logosDefault) Error(a ...any) { logos.Error(a...) }
+func (logosDefault) Fatal(a ...any) { logos.Fatal(a...) }
+func (logosDefault) Print(a ...any) { logos.Print(a...) }
+func (logosDefault) WithError(err error) Logger {
+	return &logosAdapter{impl: logos.WithError(err)}
+}
+func (logosDefault) With(key string, value any) Logger {
+	return &logosAdapter{impl: logos.With(key, value)}
+}

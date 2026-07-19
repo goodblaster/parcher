@@ -33,10 +33,12 @@ type Logger interface {
 	Print(a ...any)
 }
 
-// Global default logger
+// Global default logger. The default delegates to the logos package-level
+// logger (see logosDefault), so host applications outside this module can
+// direct this library's logs just by configuring logos.
 var (
 	mu            sync.RWMutex
-	defaultLogger Logger = &noopLogger{}
+	defaultLogger Logger = logosDefault{}
 )
 
 // SetDefault sets the global default logger.
@@ -109,15 +111,15 @@ func FromContext(ctx context.Context) Logger {
 	return Default()
 }
 
-// noopLogger is a safe default that does nothing.
-// This prevents panics if no logger is configured.
-type noopLogger struct{}
+// NoopLogger discards everything; SetDefault(NoopLogger{}) silences the
+// library entirely.
+type NoopLogger struct{}
 
-func (l *noopLogger) Debug(a ...any)                    {}
-func (l *noopLogger) Info(a ...any)                     {}
-func (l *noopLogger) Warn(a ...any)                     {}
-func (l *noopLogger) Error(a ...any)                    {}
-func (l *noopLogger) Fatal(a ...any)                    {}
-func (l *noopLogger) WithError(err error) Logger        { return l }
-func (l *noopLogger) With(key string, value any) Logger { return l }
-func (l *noopLogger) Print(a ...any)                    {}
+func (l NoopLogger) Debug(a ...any)                    {}
+func (l NoopLogger) Info(a ...any)                     {}
+func (l NoopLogger) Warn(a ...any)                     {}
+func (l NoopLogger) Error(a ...any)                    {}
+func (l NoopLogger) Fatal(a ...any)                    {}
+func (l NoopLogger) WithError(err error) Logger        { return l }
+func (l NoopLogger) With(key string, value any) Logger { return l }
+func (l NoopLogger) Print(a ...any)                    {}
