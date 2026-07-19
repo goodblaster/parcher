@@ -8,6 +8,7 @@ package capture
 import (
 	"context"
 
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
 	"github.com/goodblaster/pscription/internal/log"
@@ -160,4 +161,45 @@ func normalizeBackgroundAttachment(ctx context.Context) error {
 			s.textContent = '*{background-attachment:scroll !important}';
 			(document.head || document.documentElement).appendChild(s); })()`,
 		nil).Do(ctx)
+}
+
+// captureFullImage takes a full-page screenshot in the given lossy format,
+// clamping the captured height to the format's per-dimension encoder limit
+// (WebP: 16383, JPEG: 65535). Chrome doesn't error past the limit — it
+// silently returns ZERO bytes — so tall pages must be cut off at the
+// bottom to produce anything at all.
+func captureFullImage(ctx context.Context, format page.CaptureScreenshotFormat, quality, maxDim int64) ([]byte, error) {
+	_, _, _, _, _, cssContentSize, err := page.GetLayoutMetrics().Do(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get layout metrics")
+	}
+	if cssContentSize == nil {
+		return nil, errors.New("layout metrics returned no content size")
+	}
+	width, height := cssContentSize.Width, cssContentSize.Height
+	if width > float64(maxDim) {
+		// Cropping horizontally would cut into every line of the page;
+		// unlike height there is no sensible partial capture.
+		return nil, errors.Newf("page width %.0f exceeds the %s encoder limit %d", width, format, maxDim)
+	}
+	if height > float64(maxDim) {
+		log.With("height", int64(height)).With("limit", maxDim).With("format", string(format)).
+			Warn("page taller than the encoder limit; capture is cut off at the bottom (use the png backend for full length)")
+		height = float64(maxDim)
+	}
+
+	buf, err := page.CaptureScreenshot().
+		WithCaptureBeyondViewport(true).
+		WithFromSurface(true).
+		WithFormat(format).
+		WithQuality(quality).
+		WithClip(&page.Viewport{X: 0, Y: 0, Width: width, Height: height, Scale: 1}).
+		Do(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(buf) == 0 {
+		return nil, errors.Newf("Chrome returned an empty %s screenshot", string(format))
+	}
+	return buf, nil
 }

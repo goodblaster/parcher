@@ -3,6 +3,7 @@ package capture
 import (
 	"context"
 
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 )
 
@@ -18,6 +19,9 @@ func (JPEG) Ext() string  { return ".jpg" }
 // notably smaller" sweet spot.
 const jpegQuality = 85
 
+// jpegMaxDim is JPEG's per-dimension limit (16 bits).
+const jpegMaxDim = 65535
+
 func (JPEG) Action(snap *Snapshot) chromedp.ActionFunc {
 	return func(ctx context.Context) error {
 		// Fixed (parallax) backgrounds only paint in the first viewport of a
@@ -25,9 +29,8 @@ func (JPEG) Action(snap *Snapshot) chromedp.ActionFunc {
 		if err := normalizeBackgroundAttachment(ctx); err != nil {
 			return err
 		}
-		var buf []byte
-		// chromedp.FullScreenshot emits JPEG for any quality other than 100.
-		if err := chromedp.FullScreenshot(&buf, jpegQuality).Do(ctx); err != nil {
+		buf, err := captureFullImage(ctx, page.CaptureScreenshotFormatJpeg, jpegQuality, jpegMaxDim)
+		if err != nil {
 			return err
 		}
 		snap.MIME = "image/jpeg"

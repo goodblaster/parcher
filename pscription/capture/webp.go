@@ -21,6 +21,10 @@ func (WebP) Ext() string  { return ".webp" }
 // smaller than JPEG" point for WebP.
 const webpQuality = 80
 
+// webpMaxDim is WebP's hard per-dimension limit (14 bits); Chrome silently
+// returns zero bytes for anything larger.
+const webpMaxDim = 16383
+
 func (WebP) Action(snap *Snapshot) chromedp.ActionFunc {
 	return func(ctx context.Context) error {
 		// Fixed (parallax) backgrounds only paint in the first viewport of a
@@ -28,14 +32,7 @@ func (WebP) Action(snap *Snapshot) chromedp.ActionFunc {
 		if err := normalizeBackgroundAttachment(ctx); err != nil {
 			return err
 		}
-		// chromedp.FullScreenshot only emits PNG or JPEG, so capture WebP
-		// directly with the same full-page settings it uses.
-		buf, err := page.CaptureScreenshot().
-			WithCaptureBeyondViewport(true).
-			WithFromSurface(true).
-			WithFormat(page.CaptureScreenshotFormatWebp).
-			WithQuality(webpQuality).
-			Do(ctx)
+		buf, err := captureFullImage(ctx, page.CaptureScreenshotFormatWebp, webpQuality, webpMaxDim)
 		if err != nil {
 			return err
 		}
