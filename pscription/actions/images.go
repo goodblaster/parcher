@@ -3,9 +3,7 @@ package actions
 import (
 	"context"
 
-	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/pscription/internal/config"
 	"github.com/goodblaster/pscription/internal/log"
 	js "github.com/goodblaster/pscription/scripts"
 )
@@ -50,14 +48,4 @@ func EmbedBackgroundImages() chromedp.ActionFunc {
 
 func NormalizeViewportUnits() chromedp.ActionFunc {
 	return js.NormalizeViewportUnits.Action(nil)
-}
-
-func MakeFullHeight() chromedp.ActionFunc {
-	return func(ctx context.Context) error {
-		var pageHeight int64
-		_ = chromedp.Evaluate(`document.documentElement.scrollHeight`, &pageHeight).Do(ctx)
-		_ = emulation.SetPageScaleFactor(1.0).Do(ctx)
-		_ = emulation.SetDeviceMetricsOverride(config.ViewWidth, pageHeight, 1.0, false).Do(ctx)
-		return nil
-	}
 }

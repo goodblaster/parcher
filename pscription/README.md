@@ -57,13 +57,13 @@ pattern (secrets in a gitignored JSON, applied by committed logic).
 ## Architecture
 
 Flow: **runner** (browser session) → **pipeline** (pscription steps) →
-**capture** (optional serialization).
+scripts/extraction. Serialization to archive formats lives in
+[parchmint](../parchmint), which consumes this library.
 
 - `runner/` — browser lifecycle, config, pre-navigation hooks
 - `pipeline/` — named steps composed into recipes; `Staticize()`; a step
   registry that will back the `.rx` file format
-- `capture/` — backends: `SingleFile{}` (self-contained HTML, preferred),
-  `MHT{}`, `Screenshot{}`
+- `pscription/` — the `.rx` file format: parsing, prep selection, outputs
 - `actions/` — composable chromedp building blocks
 - `scripts/` — embedded page-context JavaScript ([SCRIPTS.md](SCRIPTS.md))
 
@@ -71,10 +71,3 @@ Dialog clearing is layered, strongest first: consent/age-gate state is
 pre-seeded before navigation (cookies + localStorage), known consent
 platforms are dismissed by exact selector, text heuristics handle the rest,
 and a geometry-based demolition pass runs just before capture.
-
-## License note
-
-`capture/vendor/single-file-bundle.js` is
-[single-file-core](https://github.com/gildas-lormeau/single-file-core)
-(AGPL-3.0-or-later), used as the final HTML serializer. All page
-preparation is original code.
