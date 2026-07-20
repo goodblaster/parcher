@@ -6,9 +6,11 @@ browser, like a doctor's ℞ (Latin *recipe*: "take thou").
 
 The built-in `staticize` pscription turns a live page into something a
 capture backend can serialize faithfully: dialogs and age gates dismissed,
-lazy content loaded, videos frozen to stills, every resource embedded as a
-data URI. [parchmint](../parchmint)'s `parch` is that pscription fused to a
-serializer.
+lazy content loaded, videos/canvases/cross-origin iframes frozen to
+stills, every resource embedded as a data URI.
+[parchmint](../parchmint)'s `parch` is that pscription fused to a
+serializer, plus a text layer extracted here (rendered text with
+word-level geometry) that makes the archives searchable.
 
 ## Usage
 

@@ -13,7 +13,7 @@ var (
 )
 
 // init makes env-driven config work for library consumers too — importing
-// any webrun package is enough; no explicit Init call required.
+// any pscription package is enough; no explicit Init call required.
 func init() {
 	Init()
 }

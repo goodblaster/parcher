@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**pscription** is a browser script-running and page-preparation library; **rx** is its CLI. A "pscription" (like a doctor's ℞ — Latin *recipe*, "take thou") is an ordered list of preparation steps and scripts executed against a live page. It drives headless Chrome (chromedp) and runs a pipeline of named preparation steps (dismiss dialogs, defeat lazy loading, freeze videos/canvases/cross-origin iframes to stills, embed resources as data URIs).
+**pscription** is a browser script-running and page-preparation library; **rx** is its CLI. A "pscription" (like a doctor's ℞ — Latin *recipe*, "take thou") is an ordered list of preparation steps and scripts executed against a live page. It drives headless Chrome (chromedp), runs a pipeline of named preparation steps (dismiss dialogs, defeat lazy loading, freeze videos/canvases/cross-origin iframes to stills, embed resources as data URIs), and extracts rendered text with word-level geometry (parchmint's text layer, including its capture-time highlighting and image recording).
 
 Serialization lives downstream: [parchmint](../parchmint) (binary `parch`) owns the capture backends (SingleFile HTML, MHT, PDF, screenshots) and consumes this library for browser driving and prep. The line between the repos: **pscription = live pages, parchmint = files.**
 
