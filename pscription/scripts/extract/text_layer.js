@@ -41,7 +41,14 @@
 // node splits never invalidate pending positions.
 function extractTextLayer(marks) {
     const blocks = [];
-    const stats = { blocks: 0, words: 0, chars: 0, oracleMismatches: 0, framesWalked: 0, marked: 0, markSkipped: 0 };
+    // Visible images are recorded too (node, page box, natural size, and
+    // an FNV-1a hash of the src) so a later `parch index` can OCR the
+    // archive's images and place the recognized words in page coordinates
+    // WITHOUT re-running a browser. By extraction time the prep pipeline
+    // has inlined images as data URIs, so the hash identifies the same
+    // bytes the archive will carry.
+    const images = [];
+    const stats = { blocks: 0, words: 0, chars: 0, oracleMismatches: 0, framesWalked: 0, marked: 0, markSkipped: 0, images: 0 };
 
     const BLOCK_TYPES = {
         P: 'p', H1: 'h1', H2: 'h2', H3: 'h3', H4: 'h4', H5: 'h5', H6: 'h6',
@@ -323,6 +330,37 @@ function extractTextLayer(marks) {
         }
     }
 
+    // ---- images -----------------------------------------------------------
+
+    // FNV-1a (32-bit) over the string's UTF-16 code units; must stay in
+    // lockstep with textlayer.FNV1a on the Go side, which re-hashes the
+    // archive's img srcs to pair them with these entries at index time.
+    function fnv1a(str) {
+        let h = 0x811c9dc5;
+        for (let i = 0; i < str.length; i++) {
+            h ^= str.charCodeAt(i);
+            h = Math.imul(h, 0x01000193) >>> 0;
+        }
+        return ('0000000' + h.toString(16)).slice(-8);
+    }
+
+    function collectImage(img, frame, offset) {
+        const rect = img.getBoundingClientRect();
+        if (rect.width < 16 || rect.height < 16) return;
+        const src = img.currentSrc || img.src || '';
+        if (!src) return;
+        const entry = {
+            node: elementPath(img),
+            box: [Math.round(rect.left + offset.x), Math.round(rect.top + offset.y),
+                Math.round(rect.width), Math.round(rect.height)],
+            natural: [img.naturalWidth || 0, img.naturalHeight || 0],
+            hash: fnv1a(src),
+        };
+        if (frame) entry.frame = frame;
+        images.push(entry);
+        stats.images++;
+    }
+
     // ---- tree walk --------------------------------------------------------
 
     function elementPath(el) {
@@ -354,6 +392,10 @@ function extractTextLayer(marks) {
             const tag = node.tagName.toUpperCase();
             if (tag === 'BR') {
                 addBreak(run);
+                continue;
+            }
+            if (tag === 'IMG') {
+                collectImage(node, frame, offset);
                 continue;
             }
             if (SKIP_TAGS.has(tag)) {
@@ -408,6 +450,7 @@ function extractTextLayer(marks) {
             viewport: { width: window.innerWidth, dpr: window.devicePixelRatio || 1 },
             stats: stats,
             blocks: blocks,
+            images: images,
         };
     }
     const topOffset = { x: window.scrollX, y: window.scrollY };
@@ -443,5 +486,6 @@ function extractTextLayer(marks) {
         viewport: { width: window.innerWidth, dpr: window.devicePixelRatio || 1 },
         stats: stats,
         blocks: blocks,
+        images: images,
     };
 }
