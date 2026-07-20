@@ -1,0 +1,32 @@
+# Build artifacts
+/bin/
+/dist/
+
+# Archive outputs
+*.html.bak
+*.mht
+*.mhtml
+
+# Environment
+.env
+.env.local
+
+# Go workspace
+go.work
+go.work.sum
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Capture outputs
+*.html
+*.pdf
+*.png
+*.jpg
+*.jpeg
+
+# Stray binary from `go build ./cmd/parch` without -o bin/
+/parch

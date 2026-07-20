@@ -1,0 +1,9 @@
+# A pscription used as parch's prep (parch -rx). parch runs these steps to
+# prepare the page, then serializes it. Same .rx format rx uses, so you can
+# mix built-in steps with your own scripts before archiving.
+#
+# staticize is the full "make it a faithful self-contained snapshot" prep;
+# here we add a custom step that strips clutter first.
+prep: staticize
+
+remove-clutter.js
