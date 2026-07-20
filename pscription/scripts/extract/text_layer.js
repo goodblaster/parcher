@@ -29,9 +29,19 @@
 //     innerText (the spec'd select-all approximation); mismatches are
 //     flagged, and a whole-page Selection.toString() similarity lands in
 //     stats. The browser referees our walker.
-function extractTextLayer() {
+//
+// marks (optional): { blockId: { len: textLength, ranges: [[start,end],…] } }
+// — ranges to wrap in <mark data-parchmint="mark"> elements, computed by
+// the Go matcher from a PREVIOUS run of this same script. Because the walk
+// is deterministic, block ids agree across runs by construction; `len`
+// guards against the page having mutated in between (mismatched blocks
+// are skipped, counted in stats.markSkipped). Each range is wrapped one
+// text-node segment at a time (a phrase can span inline elements, which a
+// single Range.surroundContents cannot), processed back-to-front so text
+// node splits never invalidate pending positions.
+function extractTextLayer(marks) {
     const blocks = [];
-    const stats = { blocks: 0, words: 0, chars: 0, oracleMismatches: 0, framesWalked: 0 };
+    const stats = { blocks: 0, words: 0, chars: 0, oracleMismatches: 0, framesWalked: 0, marked: 0, markSkipped: 0 };
 
     const BLOCK_TYPES = {
         P: 'p', H1: 'h1', H2: 'h2', H3: 'h3', H4: 'h4', H5: 'h5', H6: 'h6',
@@ -181,6 +191,7 @@ function extractTextLayer() {
             return;
         }
         const doc = run.container.ownerDocument;
+        const map = run.map;
         const words = [];
         let bx1 = Infinity, by1 = Infinity, bx2 = -Infinity, by2 = -Infinity;
         for (const [start, end] of segmentWords(text)) {
@@ -237,6 +248,47 @@ function extractTextLayer() {
         stats.blocks++;
         stats.words += words.length;
         stats.chars += text.length;
+
+        if (marks && marks[block.id]) {
+            applyMarks(doc, map, text, marks[block.id]);
+        }
+    }
+
+    // ---- highlighting -----------------------------------------------------
+
+    // Wraps the given ranges of a just-flushed block in <mark> elements.
+    // Runs AFTER geometry measurement (marks are inline; they don't change
+    // layout, but measuring first keeps the layer authoritative). Segments
+    // are wrapped back-to-front: surroundContents splits the text node,
+    // leaving the original node as the part BEFORE the split, so earlier
+    // offsets in the same node stay valid.
+    function applyMarks(doc, map, text, entry) {
+        if (entry.len !== text.length) {
+            stats.markSkipped += entry.ranges.length;
+            return;
+        }
+        const ranges = entry.ranges.slice().sort((a, b) => b[0] - a[0]);
+        for (const [start, end] of ranges) {
+            const segs = map.filter((s) => s.end > start && s.start < end);
+            for (let i = segs.length - 1; i >= 0; i--) {
+                const seg = segs[i];
+                const from = seg.nodeStart + Math.max(0, start - seg.start);
+                const to = seg.nodeStart + Math.min(seg.nodeEnd - seg.nodeStart, end - seg.start);
+                if (to <= from || !seg.node.isConnected) continue;
+                try {
+                    const range = doc.createRange();
+                    range.setStart(seg.node, from);
+                    range.setEnd(seg.node, to);
+                    const mark = seg.node.ownerDocument.createElement('mark');
+                    mark.setAttribute('data-parchmint', 'mark');
+                    range.surroundContents(mark);
+                } catch (e) {
+                    stats.markSkipped++;
+                    continue;
+                }
+            }
+            stats.marked++;
+        }
     }
 
     // ---- tree walk --------------------------------------------------------
