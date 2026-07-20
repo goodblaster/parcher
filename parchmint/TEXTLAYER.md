@@ -13,11 +13,23 @@ have no DOM to annotate (PDF has its own native text).
 
 ## Placement
 
-A single `<script type="application/x-parchmint-text">…</script>` element
-just before `</body>`. Inert to rendering, invisible to CSS, extractable
-with a string scan. Inside the JSON every `</` is escaped as `<\/` (a
-no-op JSON string escape) so the payload cannot terminate its own script
-tag; consumers unescape after slicing.
+**HTML archives**: a single `<script
+type="application/x-parchmint-text">…</script>` element just before
+`</body>`. Inert to rendering, invisible to CSS, extractable with a
+string scan. Inside the JSON every `</` is escaped as `<\/` (a no-op
+JSON string escape) so the payload cannot terminate its own script tag;
+consumers unescape after slicing.
+
+**MHT archives**: an extra MIME part before the closing boundary —
+`Content-Type: application/x-parchmint-text`, base64-encoded (sidestepping
+quoted-printable entirely), `Content-Location: parchmint:text-layer`.
+multipart/related readers render only referenced parts, so browsers carry
+the layer along silently. Same capabilities either way: `parch
+text`/`find`/`index`/`mark` sniff the container and behave identically,
+and a marked copy keeps its source's format — `mark` on an .mht writes a
+.marked.mht by putting the marked document back into the container
+(stylesheets inlined from the CSSOM; all other parts kept, so cid:
+references keep resolving).
 
 ## Format: `parchmint-text/1`
 

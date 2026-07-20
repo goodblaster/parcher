@@ -198,7 +198,7 @@ func main() {
 	start := time.Now()
 
 	opts := capture.Options{
-		TextLayer: text && format == "html",
+		TextLayer: text && (format == "html" || format == "mht"),
 		Highlight: highlight,
 	}
 	snap, err := capture.CaptureWithOptions(ctx, url, runCfg, recipe, backend, opts)

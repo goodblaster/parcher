@@ -100,22 +100,35 @@ func (w *Word) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// FromFile extracts and parses the layer embedded in an archive file.
+// FromFile extracts and parses the layer embedded in an archive file
+// (HTML or MHT — sniffed from the bytes).
 func FromFile(path string) (*Layer, error) {
-	html, err := os.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return FromHTML(html, path)
+	return FromBytes(data, path)
 }
 
-// FromHTML extracts and parses the layer from archive bytes. name is used
-// in error messages only.
+// FromBytes extracts and parses the layer from archive bytes, HTML or
+// MHT. name is used in error messages only.
+func FromBytes(data []byte, name string) (*Layer, error) {
+	if IsMHT(data) {
+		raw, err := mhtLayerBytes(data)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w (captured with -text=false or an older parch?)", name, err)
+		}
+		return parseLayer(raw, name)
+	}
+	return FromHTML(data, name)
+}
+
+// FromHTML extracts and parses the layer from HTML archive bytes.
 func FromHTML(html []byte, name string) (*Layer, error) {
 	open := []byte(`<script type="` + ScriptType + `">`)
 	start := bytes.Index(html, open)
 	if start == -1 {
-		return nil, fmt.Errorf("%s has no embedded text layer (captured with -text=false, an older parch, or not an HTML archive)", name)
+		return nil, fmt.Errorf("%s has no embedded text layer (captured with -text=false, an older parch, or not an archive)", name)
 	}
 	start += len(open)
 	// The payload contains no raw `</` (escaped to `<\/` at embed time),
@@ -125,15 +138,27 @@ func FromHTML(html []byte, name string) (*Layer, error) {
 	if end == -1 {
 		return nil, fmt.Errorf("%s: text layer is truncated", name)
 	}
+	return parseLayer(html[start:start+end], name)
+}
 
+func parseLayer(raw []byte, name string) (*Layer, error) {
 	var layer Layer
-	if err := json.Unmarshal(html[start:start+end], &layer); err != nil {
+	if err := json.Unmarshal(raw, &layer); err != nil {
 		return nil, fmt.Errorf("%s: invalid text layer: %w", name, err)
 	}
 	if !strings.HasPrefix(layer.Format, "parchmint-text/") {
 		return nil, fmt.Errorf("%s: unknown layer format %q", name, layer.Format)
 	}
 	return &layer, nil
+}
+
+// EmbedInArchive embeds layerJSON in archive bytes of either format,
+// replacing an existing layer.
+func EmbedInArchive(data, layerJSON []byte) ([]byte, error) {
+	if IsMHT(data) {
+		return EmbedInMHT(data, layerJSON)
+	}
+	return EmbedInHTML(data, layerJSON), nil
 }
 
 // Marshal serializes the layer back to its JSON document form (compact

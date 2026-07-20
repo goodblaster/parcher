@@ -17,7 +17,7 @@ parch mark -grayscale "music" "iphone" test-site-1.html
                                        #   image matches painted into the image itself
 ```
 
-Archive now, find later: each HTML archive carries a **text layer** —
+Archive now, find later: each archive (HTML or MHT) carries a **text layer** —
 every rendered word with its page coordinates — so files can be stored
 anywhere, indexed by any search system, and when one is found, shown
 with the matches highlighted... even when the text only ever existed as

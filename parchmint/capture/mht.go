@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parchmint/internal/log"
+	"github.com/goodblaster/parchmint/textlayer"
 	"github.com/goodblaster/pscription/actions"
 )
 
@@ -37,6 +39,18 @@ func (MHT) Action(snap *Snapshot) chromedp.ActionFunc {
 		}
 		snap.MIME = "multipart/related"
 		snap.Bytes = []byte(content)
+
+		// The text layer rides as an extra MIME part (base64, ignored by
+		// renderers) — same capabilities as the HTML backend's <script>
+		// element: parch text/find/index/mark all work on .mht.
+		if snap.TextLayer != nil {
+			embedded, err := textlayer.EmbedInMHT(snap.Bytes, snap.TextLayer)
+			if err != nil {
+				log.WithError(err).Warn("could not embed text layer in mht; archiving without it")
+			} else {
+				snap.Bytes = embedded
+			}
+		}
 		return nil
 	}
 }
