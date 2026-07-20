@@ -68,6 +68,7 @@ const (
 	ExtractArticle   ScriptFile = "extract/article.js"
 	ExtractPageLinks ScriptFile = "extract/links.js"
 	ExtractText      ScriptFile = "extract/text.js"
+	ExtractTextLayer ScriptFile = "extract/text_layer.js"
 )
 
 // builtinScripts maps the "@name" reference to its embedded script.

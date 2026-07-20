@@ -83,6 +83,15 @@ resources the server can't reach.
 | `remove_unused_fonts.js` | async | Same idea for `@font-face` blocks. |
 | `inline_iframes.js` | async | Replaces same-origin iframes with divs containing their HTML. Experimental: inlined styles can leak into the parent page. Not in the default recipe. |
 
+## Extraction (`extract/`)
+
+| Script | Shape | Purpose |
+|---|---|---|
+| `article.js` | sync | Heuristic main-article extraction (`@article`). |
+| `links.js` | sync | Page links with text (`@links`). |
+| `text.js` | sync | Simple visible-text dump (`@text`). |
+| `text_layer.js` | sync | The parchmint text layer (format contract: parchmint's TEXTLAYER.md): rendered text with word-level geometry. Blocks from *computed* display via the anonymous-box rule; words merged across inline elements; whitespace per CSS; DOM order (= select-all/copy order); composed-tree walk (shadow roots, slots, same-origin iframes with coordinate offsets); `Intl.Segmenter` for CJK; clip-chain + offscreen filtering excludes sr-only/skip-link text a human can't see. Self-checks: per-leaf-block `innerText` comparison (flagged as `oracle:"mismatch"`) and a whole-page `Selection.toString()` Dice similarity in stats. |
+
 ## Utilities (`util/`)
 
 | Script | Shape | Purpose |
