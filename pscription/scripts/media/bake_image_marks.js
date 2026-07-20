@@ -49,9 +49,20 @@ function bakeImageMarks(specs, opts) {
             canvas.width = w;
             canvas.height = h;
             const ctx = canvas.getContext('2d');
-            if (opts.grayscale) ctx.filter = 'grayscale(1)';
             ctx.drawImage(img, 0, 0);
-            ctx.filter = 'none';
+            if (opts.grayscale) {
+                // Explicit luminance loop, NOT ctx.filter='grayscale(1)':
+                // the canvas filter is silently flaky in headless Chrome —
+                // observed applying to one image and not the next within a
+                // single run. Pixels can't lie.
+                const id = ctx.getImageData(0, 0, w, h);
+                const d = id.data;
+                for (let i = 0; i < d.length; i += 4) {
+                    const g = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0;
+                    d[i] = d[i + 1] = d[i + 2] = g;
+                }
+                ctx.putImageData(id, 0, 0);
+            }
             for (const [fx, fy, fw, fh] of rects) {
                 // A little breathing room so tight OCR boxes don't clip
                 // ascenders/descenders.
