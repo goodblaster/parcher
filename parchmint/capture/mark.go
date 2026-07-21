@@ -32,14 +32,15 @@ type MarkResult struct {
 
 // MarkArchive loads an existing archive (file:// URL) at its recorded
 // viewport and produces a marked copy: DOM text matches wrapped in
-// <mark data-parchmint> via the same deterministic walk used at capture,
-// and OCR matches (from `parch index`) BAKED into their images as
-// translucent rectangles — image-relative coordinates, so the highlight
-// is correct at any viewer size, in any renderer, with no scripts.
-// layer is the archive's embedded layer (for the OCR blocks); DOM
-// matching runs against a FRESH extraction of the loaded document, so
-// marking is self-consistent even if the serialized DOM walks slightly
-// differently than the original page did.
+// <mark data-parchmint>, and OCR matches (from `parch index`) BAKED into
+// their images as translucent rectangles — image-relative coordinates, so
+// the highlight is correct at any viewer size, in any renderer, with no
+// scripts. layer is the archive's embedded layer (for the OCR blocks);
+// DOM matching runs against a FRESH extraction of the loaded document, and
+// the marks are wrapped against that same extraction's cached run maps, so
+// every match lands even though a bare archive's fonts/layout are still
+// settling (which would shift block boundaries between two separate
+// walks).
 func MarkArchive(ctx context.Context, cfg runner.Config, fileURL string, phrases []string, layer *textlayer.Layer, opts MarkOptions) (*MarkResult, error) {
 	if layer.Viewport.Width > 0 {
 		cfg.ViewportWidth = int64(layer.Viewport.Width)
@@ -59,8 +60,9 @@ func MarkArchive(ctx context.Context, cfg runner.Config, fileURL string, phrases
 			log.WithError(err).Debug("fonts.ready wait failed; continuing")
 		}
 
-		// DOM text: fresh extraction, match, second walk wraps.
-		payload, err := extractPayload(ctx, nil)
+		// DOM text: fresh extraction (caching run maps), match, then wrap
+		// against that same extraction — no second walk to diverge.
+		payload, err := extractPayload(ctx, true)
 		if err != nil {
 			return err
 		}
