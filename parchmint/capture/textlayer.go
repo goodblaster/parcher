@@ -25,17 +25,12 @@ type textLayerPayload struct {
 }
 
 // extractPayload runs the text-layer extraction against the live,
-// prepared page. marks, when non-nil, additionally wraps the given ranges
-// in <mark> elements during the walk (capture-time highlighting).
-func extractPayload(ctx context.Context, marks map[int]markEntry) (*textLayerPayload, error) {
+// prepared page. When cacheRuns is set, the walk stashes each block's
+// text-node map on window.__pmRunCache so a following applyTextMarks can
+// wrap ranges against this exact extraction (see applyHighlights).
+func extractPayload(ctx context.Context, cacheRuns bool) (*textLayerPayload, error) {
 	var payload textLayerPayload
-	var err error
-	if marks == nil {
-		err = js.ExtractTextLayer.Action(&payload).Do(ctx)
-	} else {
-		err = js.ExtractTextLayer.Action(&payload, marks).Do(ctx)
-	}
-	if err != nil {
+	if err := js.ExtractTextLayer.Action(&payload, cacheRuns).Do(ctx); err != nil {
 		return nil, errors.Wrap(err, "text layer extraction")
 	}
 
@@ -44,34 +39,32 @@ func extractPayload(ctx context.Context, marks map[int]markEntry) (*textLayerPay
 		Words            int      `json:"words"`
 		OracleMismatches int      `json:"oracleMismatches"`
 		PageSimilarity   *float64 `json:"pageSimilarity"`
-		Marked           int      `json:"marked"`
-		MarkSkipped      int      `json:"markSkipped"`
 	}
 	_ = json.Unmarshal(payload.Stats, &st)
 	l := log.With("blocks", st.Blocks).With("words", st.Words).With("oracleMismatches", st.OracleMismatches)
 	if st.PageSimilarity != nil {
 		l = l.With("pageSimilarity", *st.PageSimilarity)
 	}
-	if marks != nil {
-		l = l.With("marked", st.Marked).With("markSkipped", st.MarkSkipped)
-	}
 	l.Debug("extracted text layer")
 	return &payload, nil
 }
 
-// markEntry mirrors the marks parameter of text_layer.js: the block's
-// expected text length (a mutation guard) plus the ranges to wrap.
+// markEntry mirrors the marks parameter of apply_text_marks.js: the
+// UTF-16 ranges to wrap in a block.
 type markEntry struct {
-	Len    int      `json:"len"`
 	Ranges [][2]int `json:"ranges"`
 }
 
 // applyHighlights matches the phrases against an extracted payload and
-// runs a second walk that wraps every match in <mark data-parchmint>.
-// Matching uses the same Go matcher as `parch find`, so capture-time
-// highlighting and archive search agree by construction. The marks land
-// in the DOM before serialization, so every backend shows them — yellow
-// in screenshots and PDFs, <mark> elements in HTML.
+// wraps every match in <mark data-parchmint>. Matching uses the same Go
+// matcher as `parch find`, so highlighting and archive search agree by
+// construction. The marks are applied by apply_text_marks.js against the
+// SAME extraction (its cached run maps) — not a second walk — so every
+// match lands even when fonts/layout shift block boundaries between
+// calls. Requires the preceding extractPayload to have run with
+// cacheRuns=true. Marks land in the DOM before serialization, so every
+// backend shows them — yellow pixels in screenshots and PDFs, <mark>
+// elements in HTML.
 func applyHighlights(ctx context.Context, payload *textLayerPayload, phrases []string) (int, error) {
 	var blocks []textlayer.Block
 	if err := json.Unmarshal(payload.Blocks, &blocks); err != nil {
@@ -88,38 +81,26 @@ func applyHighlights(ctx context.Context, payload *textLayerPayload, phrases []s
 			hits = append(hits, q.FindBlock(&blocks[i])...)
 		}
 	}
-	log.With("phrases", len(phrases)).With("matches", len(hits)).Info("highlighting matches")
 	if len(hits) == 0 {
+		log.With("phrases", len(phrases)).With("matches", 0).Info("highlighting matches")
 		return 0, nil
 	}
 
-	blockText := map[int]string{}
-	for i := range blocks {
-		blockText[blocks[i].ID] = blocks[i].Text
-	}
 	marks := map[int]markEntry{}
 	for id, ranges := range textlayer.MergeHitRanges(hits) {
-		marks[id] = markEntry{Len: utf16Len(blockText[id]), Ranges: ranges}
+		marks[id] = markEntry{Ranges: ranges}
 	}
 
-	// The second walk re-derives identical block ids (deterministic walk,
-	// unchanged DOM) and wraps as it goes.
-	_, err := extractPayload(ctx, marks)
-	return len(hits), err
-}
-
-// utf16Len is the length of s in UTF-16 code units — JavaScript's
-// String.length, the unit the extractor's offsets live in.
-func utf16Len(s string) int {
-	n := 0
-	for _, r := range s {
-		if r > 0xFFFF {
-			n += 2
-		} else {
-			n++
-		}
+	var st struct {
+		Marked  int `json:"marked"`
+		Skipped int `json:"skipped"`
 	}
-	return n
+	if err := js.ApplyTextMarks.Action(&st, marks).Do(ctx); err != nil {
+		return 0, errors.Wrap(err, "apply text marks")
+	}
+	log.With("phrases", len(phrases)).With("matches", len(hits)).
+		With("marked", st.Marked).With("skipped", st.Skipped).Info("highlighting matches")
+	return len(hits), nil
 }
 
 // composeLayer wraps an extraction payload with the archive header,

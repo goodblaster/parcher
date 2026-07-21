@@ -137,7 +137,7 @@ func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipe
 	// beats no capture.
 	if opts.TextLayer || len(opts.Highlight) > 0 {
 		_ = session.Run(func(ctx context.Context) error {
-			payload, err := extractPayload(ctx, nil)
+			payload, err := extractPayload(ctx, len(opts.Highlight) > 0)
 			if err != nil {
 				log.WithError(err).Warn("text layer extraction failed; archiving without it")
 				return nil
