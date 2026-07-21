@@ -50,10 +50,15 @@ func runMarkCommand(args []string) {
 	if err != nil {
 		die(err)
 	}
-	layer, err := textlayer.FromFile(abs)
+	srcData, err := os.ReadFile(abs)
 	if err != nil {
 		die(err)
 	}
+	layer, err := textlayer.FromBytes(srcData, abs)
+	if err != nil {
+		die(err)
+	}
+	isMHT := textlayer.IsMHT(srcData)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeout)*time.Second)
 	defer cancel()
@@ -73,18 +78,31 @@ func runMarkCommand(args []string) {
 		os.Exit(1)
 	}
 
+	// The marked copy keeps the source's format: for an MHT, put the
+	// marked document back into the container (every other part — and so
+	// every cid: reference — stays intact).
+	out := res.HTML
+	markedExt := ".marked.html"
+	if isMHT {
+		out, err = textlayer.ReplaceMHTDocument(srcData, res.HTML)
+		if err != nil {
+			die(err)
+		}
+		markedExt = ".marked.mht"
+	}
+
 	dest := *output
 	switch dest {
 	case "-":
-		if _, err := os.Stdout.Write(res.HTML); err != nil {
+		if _, err := os.Stdout.Write(out); err != nil {
 			die(err)
 		}
 		dest = "(stdout)"
 	case "":
-		dest = strings.TrimSuffix(path, filepath.Ext(path)) + ".marked.html"
+		dest = strings.TrimSuffix(path, filepath.Ext(path)) + markedExt
 		fallthrough
 	default:
-		if err := os.WriteFile(dest, res.HTML, 0o644); err != nil {
+		if err := os.WriteFile(dest, out, 0o644); err != nil {
 			die(err)
 		}
 	}

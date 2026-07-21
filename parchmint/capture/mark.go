@@ -95,6 +95,15 @@ func MarkArchive(ctx context.Context, cfg runner.Config, fileURL string, phrases
 			}
 		}
 
+		// Inline linked stylesheets before serializing: an MHT source
+		// keeps its CSS in cid: parts, which die in a standalone HTML
+		// copy (unstyled page, hidden text visible). The CSSOM has the
+		// rules regardless of where they came from; HTML sources have no
+		// <link> sheets left, so this is a no-op there.
+		if err := chromedp.Evaluate(inlineLinkedStylesheets, nil).Do(ctx); err != nil {
+			log.WithError(err).Warn("could not inline stylesheets; marked copy may lose styling")
+		}
+
 		var html string
 		if err := chromedp.Evaluate(`'<!DOCTYPE html>' + document.documentElement.outerHTML`, &html).Do(ctx); err != nil {
 			return errors.Wrap(err, "serialize marked document")
@@ -107,6 +116,22 @@ func MarkArchive(ctx context.Context, cfg runner.Config, fileURL string, phrases
 	}
 	return res, nil
 }
+
+// inlineLinkedStylesheets replaces every <link rel=stylesheet> with a
+// <style> holding its rendered rules, read from the CSSOM.
+const inlineLinkedStylesheets = `(() => {
+	for (const sheet of Array.from(document.styleSheets)) {
+		const node = sheet.ownerNode;
+		if (!node || node.tagName !== 'LINK') continue;
+		let css = '';
+		try {
+			for (const r of sheet.cssRules) css += r.cssText + '\n';
+		} catch (e) { continue; }
+		const style = document.createElement('style');
+		style.textContent = css;
+		node.replaceWith(style);
+	}
+})()`
 
 // ocrMarkSpecs matches phrases against the layer's OCR blocks and returns
 // bake specs: image hash → highlight rects as fractions of the image box

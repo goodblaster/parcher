@@ -78,7 +78,7 @@ Good captures have ~zero `src="http` references (grep) and no `<script>` tags ex
 
 ## Text layer
 
-HTML archives embed the **parchmint-text/1 layer** — the page's rendered text with word-level geometry, extracted from the live page just before serialization. Format contract: [TEXTLAYER.md](TEXTLAYER.md) (read it before touching anything layer-related; blocks-as-phrase-boundary and raw-text-no-normalization are load-bearing). The extraction script lives in pscription (`scripts/extract/text_layer.js`); this repo owns the header composition, embedding (`capture/textlayer.go`), and read-back (`parch text <file>`, `-json` for the raw layer). On by default for the HTML backend (`-text=false` to disable); graphical backends have no layer. Extraction failure degrades to a warning — a capture without a layer beats no capture.
+HTML and MHT archives embed the **parchmint-text/1 layer** — the page's rendered text with word-level geometry, extracted from the live page just before serialization. Format contract: [TEXTLAYER.md](TEXTLAYER.md) (read it before touching anything layer-related; blocks-as-phrase-boundary and raw-text-no-normalization are load-bearing). The extraction script lives in pscription (`scripts/extract/text_layer.js`); this repo owns the header composition, embedding (`capture/textlayer.go` for HTML's script element, `textlayer/mht.go` for MHT's base64 MIME part), and read-back (`parch text <file>`, `-json` for the raw layer — the container is sniffed from the bytes, never the extension). On by default for the HTML and MHT backends (`-text=false` to disable); graphical backends have no layer. Extraction failure degrades to a warning — a capture without a layer beats no capture. MHT quirks: index-time image pairing scans the QP-DECODED text/html part (`textlayer.MHTDocument` — the data URIs inside are identical to the HTML case after decoding), and `parch mark` keeps the source format: on an .mht it writes a .marked.mht via `textlayer.ReplaceMHTDocument` (marked document QP-encoded back into the container, every other part kept so cid: references resolve; linked stylesheets are inlined from the CSSOM first).
 
 Gotchas: SingleFile's `compressHTML` output has NO closing `</body>` tag (the splice appends in that case — anything else post-processing archive bytes must not assume the tag exists), and the embedded JSON escapes `</` as `<\/` so it can't terminate its own script element (`json.Unmarshal` undoes it for free).
 
@@ -88,7 +88,6 @@ Gotchas: SingleFile's `compressHTML` output has NO closing `</body>` tag (the sp
 
 ## Planned
 
-- The text layer as an extra MIME part in MHT. MHT is a first-class format: Chrome-only is acceptable for this project, and MHT's multipart container dedupes repeated images that SingleFile HTML re-embeds per use.
 - Normalizer v2: Traditional↔Simplified Chinese folding (query-side, so existing archives benefit without recapture).
 - Markdown export built on the text layer (blocks are already clean typed paragraphs; OCR blocks become image captions).
 - Cryptographic timestamping of archives (hash page and layer separately — OCR output is not byte-deterministic).

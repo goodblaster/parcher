@@ -48,11 +48,11 @@ func runIndexCommand(args []string) {
 		die(fmt.Errorf("unknown OCR engine %q (want apple or tesseract)", *engineName))
 	}
 
-	html, err := os.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		die(err)
 	}
-	layer, err := textlayer.FromHTML(html, path)
+	layer, err := textlayer.FromBytes(data, path)
 	if err != nil {
 		die(err)
 	}
@@ -60,11 +60,21 @@ func runIndexCommand(args []string) {
 		die(fmt.Errorf("%s records no images in its text layer (the page has none, or the archive predates image recording — recapture it)", path))
 	}
 
-	langs := parseLangs(*langFlag, html)
+	// The document markup carrying the data-URI images: the file itself
+	// for HTML, the decoded text/html part for MHT.
+	doc := data
+	if textlayer.IsMHT(data) {
+		doc, err = textlayer.MHTDocument(data)
+		if err != nil {
+			die(err)
+		}
+	}
+
+	langs := parseLangs(*langFlag, doc)
 
 	// Pair the layer's image entries with the archive's data-URI bytes by
 	// re-hashing every img src the same way the extractor did.
-	byHash := imageBytesByHash(html)
+	byHash := imageBytesByHash(doc)
 
 	// The same image may appear at several positions; OCR each distinct
 	// image once.
@@ -131,7 +141,10 @@ func runIndexCommand(args []string) {
 	if err != nil {
 		die(err)
 	}
-	updated := textlayer.EmbedInHTML(html, out)
+	updated, err := textlayer.EmbedInArchive(data, out)
+	if err != nil {
+		die(err)
+	}
 
 	dest := *output
 	if dest == "" {
