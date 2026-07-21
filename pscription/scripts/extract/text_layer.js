@@ -30,17 +30,16 @@
 //     flagged, and a whole-page Selection.toString() similarity lands in
 //     stats. The browser referees our walker.
 //
-// marks (optional): { blockId: { len: textLength, ranges: [[start,end],…] } }
-// — ranges to wrap in <mark data-parchmint="mark"> elements, computed by
-// the Go matcher from a PREVIOUS run of this same script. Because the walk
-// is deterministic, block ids agree across runs by construction; `len`
-// guards against the page having mutated in between (mismatched blocks
-// are skipped, counted in stats.markSkipped). Each range is wrapped one
-// text-node segment at a time (a phrase can span inline elements, which a
-// single Range.surroundContents cannot), processed back-to-front so text
-// node splits never invalidate pending positions.
-function extractTextLayer(marks) {
+// cacheRuns (optional): when true, each block's text-node segment map is
+// stashed on window.__pmRunCache keyed by block id, so a follow-up call to
+// apply_text_marks.js can wrap ranges in <mark> against THIS EXACT
+// extraction — no second walk, no assumption that two walks agree (they
+// don't always: fonts/layout settle between calls and shift block
+// boundaries). See apply_text_marks.js.
+function extractTextLayer(cacheRuns) {
     const blocks = [];
+    // Per-block text-node segment maps, exposed for apply_text_marks.js.
+    const runCache = {};
     // Visible images are recorded too (node, page box, natural size, and
     // an FNV-1a hash of the src) so a later `parch index` can OCR the
     // archive's images and place the recognized words in page coordinates
@@ -48,7 +47,7 @@ function extractTextLayer(marks) {
     // has inlined images as data URIs, so the hash identifies the same
     // bytes the archive will carry.
     const images = [];
-    const stats = { blocks: 0, words: 0, chars: 0, oracleMismatches: 0, framesWalked: 0, marked: 0, markSkipped: 0, images: 0 };
+    const stats = { blocks: 0, words: 0, chars: 0, oracleMismatches: 0, framesWalked: 0, images: 0 };
 
     const BLOCK_TYPES = {
         P: 'p', H1: 'h1', H2: 'h2', H3: 'h3', H4: 'h4', H5: 'h5', H6: 'h6',
@@ -256,78 +255,9 @@ function extractTextLayer(marks) {
         stats.words += words.length;
         stats.chars += text.length;
 
-        if (marks && marks[block.id]) {
-            applyMarks(doc, map, text, marks[block.id]);
-        }
-    }
-
-    // ---- highlighting -----------------------------------------------------
-
-    // Wraps the given ranges of a just-flushed block in <mark> elements.
-    // Runs AFTER geometry measurement (marks are inline; they don't change
-    // layout, but measuring first keeps the layer authoritative).
-    //
-    // A phrase must read as ONE continuous highlight, spaces included —
-    // not per-word confetti. Map segments cover only non-whitespace runs,
-    // so consecutive segments in the same text node are merged into one
-    // wrap (interior spaces come along for free), and at text-node
-    // boundaries the wrap is extended across the adjoining whitespace.
-    // Wraps are applied back-to-front: surroundContents splits the text
-    // node, leaving the original node as the part BEFORE the split, so
-    // earlier offsets in the same node stay valid.
-    function applyMarks(doc, map, text, entry) {
-        if (entry.len !== text.length) {
-            stats.markSkipped += entry.ranges.length;
-            return;
-        }
-        const ranges = entry.ranges.slice().sort((a, b) => b[0] - a[0]);
-        for (const [start, end] of ranges) {
-            const segs = map.filter((s) => s.end > start && s.start < end);
-
-            // One wrap per text node covered by the match.
-            const groups = [];
-            for (const seg of segs) {
-                if (!seg.node.isConnected) continue;
-                const from = seg.nodeStart + Math.max(0, start - seg.start);
-                const to = seg.nodeStart + Math.min(seg.nodeEnd - seg.nodeStart, end - seg.start);
-                if (to <= from) continue;
-                const last = groups[groups.length - 1];
-                if (last && last.node === seg.node) {
-                    last.to = Math.max(last.to, to);
-                } else {
-                    groups.push({ node: seg.node, from: from, to: to });
-                }
-            }
-
-            // Bridge whitespace at node boundaries so the highlight is
-            // continuous across "apple <b>gift</b> card"-style markup.
-            for (let i = 0; i < groups.length; i++) {
-                const g = groups[i];
-                const data = g.node.nodeValue || '';
-                if (i > 0) {
-                    while (g.from > 0 && /\s/.test(data[g.from - 1])) g.from--;
-                }
-                if (i < groups.length - 1) {
-                    while (g.to < data.length && /\s/.test(data[g.to])) g.to++;
-                }
-            }
-
-            for (let i = groups.length - 1; i >= 0; i--) {
-                const g = groups[i];
-                try {
-                    const range = doc.createRange();
-                    range.setStart(g.node, g.from);
-                    range.setEnd(g.node, g.to);
-                    const mark = g.node.ownerDocument.createElement('mark');
-                    mark.setAttribute('data-parchmint', 'mark');
-                    range.surroundContents(mark);
-                } catch (e) {
-                    stats.markSkipped++;
-                    continue;
-                }
-            }
-            stats.marked++;
-        }
+        // Stash the segment map so apply_text_marks.js can wrap ranges in
+        // this block against the exact extraction they were matched on.
+        if (cacheRuns) runCache[block.id] = map;
     }
 
     // ---- images -----------------------------------------------------------
@@ -455,6 +385,7 @@ function extractTextLayer(marks) {
     }
     const topOffset = { x: window.scrollX, y: window.scrollY };
     walkContainer(document.body, '', topOffset);
+    if (cacheRuns) window.__pmRunCache = runCache;
 
     // Whole-page self-check against programmatic select-all (top document
     // only — selection does not cross iframe boundaries).
