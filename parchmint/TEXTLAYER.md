@@ -8,8 +8,10 @@ without re-running a browser, and is the substrate for `parch find`,
 capture-time highlighting, OCR merging (`parch index`), and any future
 catalog/indexing application.
 
-Applies to the HTML backend only; graphical formats (pdf/png/jpeg/webp)
-have no DOM to annotate (PDF has its own native text).
+HTML and MHT archives carry it at capture time. A **PDF** carries it too,
+but PDF is a *rendered view* produced downstream from an archive (`parch
+pdf <archive>`), not a capture format — see "PDF" below. The pixel raster
+formats (png/jpeg/webp) have no text layer.
 
 ## Placement
 
@@ -30,6 +32,25 @@ and a marked copy keeps its source's format — `mark` on an .mht writes a
 .marked.mht by putting the marked document back into the container
 (stylesheets inlined from the CSSOM; all other parts kept, so cid:
 references keep resolving).
+
+**PDF** (`parch pdf <archive>` — a rendered export, not a capture): the
+layer is attached as an embedded file (`/EmbeddedFiles`, name
+`parchmint-text-layer.json`); viewers ignore it, `parch text`/`find` pull
+it back out. A PDF actually carries *four* searchable/visible layers:
+1. **native selectable text** — Chrome's `printToPDF` emits the DOM text
+   as real PDF text (searchable in any viewer with no help from us);
+2. **invisible OCR overlay text** — for each `source:"ocr"` block,
+   transparent-color `<span>`s are positioned over the image at the word
+   boxes before printing, so image text becomes selectable/searchable in
+   any viewer (our own `find` uses the attachment and is exact; native
+   viewers may merge some adjacent image words);
+3. **visible highlights** — phrase matches render as `<mark>` on page text
+   and translucent-yellow overlay backgrounds on image words;
+4. **the attached JSON layer** — full `parchmint-text/1`, so `parch
+   text`/`find` on a `.pdf` behave exactly as on `.html`/`.mht`.
+Because a `printToPDF` bakes images as XObjects (not data URIs), `parch
+index`/`mark` do NOT operate on a `.pdf` — index and highlight the source
+archive, then (re-)export.
 
 ## Format: `parchmint-text/1`
 

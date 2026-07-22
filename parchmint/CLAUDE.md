@@ -32,17 +32,20 @@ go build -o bin/ ./cmd/...
 ./bin/parch mark "phrase" page.html              # highlight-on-read → page.marked.html copy:
                                                  # <mark>s for DOM text, highlights BAKED into
                                                  # images for OCR hits (-grayscale mutes them)
+./bin/parch pdf "phrase" page.html               # render archive → page.pdf: native + OCR-overlay
+                                                 # searchable text, highlights, attached JSON layer
 ```
 
 Config file precedence: CLI flags → `./.parch/config` (nearest ancestor) → `~/.parch/config` → defaults. Logs → stderr; content → stdout when piped.
 
 ## Architecture
 
-- **`capture/`** — `CaptureWithOptions(ctx, url, cfg, recipe, backend, opts) → *Snapshot{URL, Title, MIME, Bytes, ViewportWidth, TextLayer}`; runs prep, text-layer extraction/highlighting, and serialization in one browser session, with layout-defect retry. Backends implement `Backend` (`Name`, `Ext`, `Action(snap)`): `SingleFile{}` (vendored single-file-core bundle — preferred), `MHT{}` (Chrome MHTML + quoted-printable data-URI repair), `PDF{}` (printToPDF, screen media, single tall page), `Screenshot{}`/`JPEG{}`/`WebP{}` (full-page rasters). `MarkArchive` implements highlight-on-read over an existing archive.
-- **`cmd/parch/`** — CLI: flag/config layering, output naming (`{title}`/`{now}` templates), format selection.
+- **`capture/`** — `CaptureWithOptions(ctx, url, cfg, recipe, backend, opts) → *Snapshot{URL, Title, MIME, Bytes, ViewportWidth, TextLayer}`; runs prep, text-layer extraction/highlighting, and serialization in one browser session, with layout-defect retry. Backends implement `Backend` (`Name`, `Ext`, `Action(snap)`): `SingleFile{}` (vendored single-file-core bundle — preferred), `MHT{}` (Chrome MHTML + quoted-printable data-URI repair), `PDF{}` (printToPDF, screen media, single tall page), `Screenshot{}`/`JPEG{}`/`WebP{}` (full-page rasters). `MarkArchive` implements highlight-on-read over an existing archive; `ExportPDF` renders an archive to a rich searchable PDF (reuses the `PDF{}` backend for printing, then attaches the layer).
+- **`cmd/parch/`** — CLI: flag/config layering, output naming (`{title}`/`{now}` templates), format selection. Subcommands (`text`/`find`/`index`/`mark`/`pdf`) dispatch off `os.Args[1]` before flag parsing, so **their flags must precede positionals** (Go's flag package stops at the first positional).
 - **`textlayer/`** — the library half of `parch text`/`parch find` and the future catalog's foundation: layer parsing (`FromFile`), the versioned normalizer (`NormVersion` — NFKD accent folding, case, quote/dash unification, invisible-char bridging, hyphen splitting, CJK runes as single tokens), and block-scoped Ctrl-F-style phrase matching: a query word matches anywhere INSIDE a page word ("phone" finds iPhone — deliberately loose; keep it that way), consecutive query words match consecutive page words, and `*` bridges up to `maxGap` words ("apple*card" finds both "Apple Gift Card" and "AppleGiftCard" — internal stars carry both readings). Hits cover whole page words. Offsets are UTF-16 code units throughout (the extractor writes JavaScript string offsets). Known normalizer frontier for a future version: Traditional↔Simplified Chinese folding (書 vs 书 do not match today).
 - **`internal/ocr`** — pluggable OCR: `Engine` interface, `apple/` (macOS Vision via cgo/ObjC — darwin-only build tags with a stub elsewhere) and `tesseract/` (CLI wrapper over TSV output; a line's identity is the block/par/line triple and the TSV columns are left/top/WIDTH/HEIGHT, not x2/y2). `ocr.Default()` picks apple on darwin, tesseract elsewhere. Engines return normalized 0..1 top-left boxes.
 - **`internal/config`** — TOML config loading and filename templating.
+- **pdfcpu** (`github.com/pdfcpu/pdfcpu`, pure-Go Apache-2.0) — attaches/extracts the text-layer embedded file for the PDF container (`textlayer/pdf.go`). Read via `ExtractAttachmentsRaw` (NOT `Attachments`/`ListAttachments`, which return metadata with a nil `Reader`); relaxed validation, since `printToPDF` output occasionally trips strict mode.
 - **`internal/log`** — logging seam: interface + logos-delegating default, mirroring pscription's. Binaries use goodblaster/logos as the implementation; configuring `logos.SetDefaultLogger` (as parch's main does) routes both repos' library logs.
 
 Backends read per-capture settings from the `Snapshot` (e.g. `ViewportWidth` for PDF paper sizing) — never from globals.
