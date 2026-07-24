@@ -26,7 +26,7 @@ func runFindCommand(args []string) {
 		fmt.Fprintln(os.Stderr, "\nOptions:")
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(args)
+	_ = fs.Parse(reorderFlags(args, map[string]bool{"json": true}))
 	if fs.NArg() != 2 {
 		fs.Usage()
 		os.Exit(2)

@@ -20,7 +20,7 @@ func runTextCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "Usage: %s text [-json] <archive.html>\n\nOptions:\n", os.Args[0])
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(args)
+	_ = fs.Parse(reorderFlags(args, map[string]bool{"json": true}))
 	if fs.NArg() != 1 {
 		fs.Usage()
 		os.Exit(2)
