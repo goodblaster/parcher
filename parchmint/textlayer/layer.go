@@ -110,17 +110,25 @@ func FromFile(path string) (*Layer, error) {
 	return FromBytes(data, path)
 }
 
-// FromBytes extracts and parses the layer from archive bytes, HTML or
-// MHT. name is used in error messages only.
+// FromBytes extracts and parses the layer from archive bytes — HTML, MHT,
+// or PDF (sniffed from the bytes). name is used in error messages only.
 func FromBytes(data []byte, name string) (*Layer, error) {
-	if IsMHT(data) {
+	switch {
+	case IsPDF(data):
+		raw, err := pdfLayerBytes(data)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w (exported without a text layer or an older parch?)", name, err)
+		}
+		return parseLayer(raw, name)
+	case IsMHT(data):
 		raw, err := mhtLayerBytes(data)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w (captured with -text=false or an older parch?)", name, err)
 		}
 		return parseLayer(raw, name)
+	default:
+		return FromHTML(data, name)
 	}
-	return FromHTML(data, name)
 }
 
 // FromHTML extracts and parses the layer from HTML archive bytes.
@@ -152,13 +160,17 @@ func parseLayer(raw []byte, name string) (*Layer, error) {
 	return &layer, nil
 }
 
-// EmbedInArchive embeds layerJSON in archive bytes of either format,
+// EmbedInArchive embeds layerJSON in archive bytes of any format,
 // replacing an existing layer.
 func EmbedInArchive(data, layerJSON []byte) ([]byte, error) {
-	if IsMHT(data) {
+	switch {
+	case IsPDF(data):
+		return EmbedInPDF(data, layerJSON)
+	case IsMHT(data):
 		return EmbedInMHT(data, layerJSON)
+	default:
+		return EmbedInHTML(data, layerJSON), nil
 	}
-	return EmbedInHTML(data, layerJSON), nil
 }
 
 // Marshal serializes the layer back to its JSON document form (compact

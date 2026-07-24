@@ -60,6 +60,9 @@ func main() {
 		case "mark":
 			runMarkCommand(os.Args[2:])
 			return
+		case "pdf":
+			runPdfCommand(os.Args[2:])
+			return
 		}
 	}
 

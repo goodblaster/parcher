@@ -43,6 +43,8 @@ parch index page.html                      # OCR the archive's images (charts, f
                                            # canvases/iframes) into the text layer
 parch mark "phrase" page.html              # → page.marked.html with matches highlighted,
                                            # including matches inside images (-grayscale)
+parch pdf "phrase" page.html               # → page.pdf: selectable text (incl. inside
+                                           # OCR'd images), highlights, attached text layer
 ```
 
 More runnable demos in [examples/](examples) — each is a `run.sh` that
