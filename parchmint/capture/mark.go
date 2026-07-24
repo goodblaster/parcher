@@ -3,6 +3,8 @@ package capture
 import (
 	"context"
 
+	"github.com/chromedp/cdproto/emulation"
+
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
 	"github.com/goodblaster/parchmint/internal/log"
@@ -45,7 +47,14 @@ func MarkArchive(ctx context.Context, cfg runner.Config, fileURL string, phrases
 	if layer.Viewport.Width > 0 {
 		cfg.ViewportWidth = int64(layer.Viewport.Width)
 	}
-	cfg.PreNavigate = append(cfg.PreNavigate, actions.BypassCSP())
+	// BypassCSP lets our injected data URIs load — but it also disarms the
+	// archive's script-blocking meta CSP, so any residual script in an
+	// (old or third-party) archive could re-run and mutate the page
+	// mid-mark. Disable page script execution outright; CDP evaluate is
+	// unaffected, and archives are static documents that need no JS.
+	cfg.PreNavigate = append(cfg.PreNavigate,
+		actions.BypassCSP(),
+		emulation.SetScriptExecutionDisabled(true))
 
 	session, err := runner.Start(ctx, fileURL, cfg)
 	if err != nil {
