@@ -113,6 +113,13 @@ archive, then (re-)export.
   counted in `stats.oracleMismatches`. `stats.pageSimilarity` is a Dice
   token similarity between the layer's top-document text and the
   browser's programmatic select-all (`Selection.toString()`).
+  A nonzero `oracleMismatches` does not imply lost text: `innerText`
+  includes screen-reader-only content (1px-clipped elements) that our
+  visibility filtering correctly drops. On reference-heavy pages this is
+  the bulk of it — e.g. every mismatch on the test-site-7 *Trilobite* page
+  (42 of them) was a citation's `cite-accessibility-label` ("Jump up
+  to:"), with the citation text itself complete. Treat the count as a
+  pointer to *investigate*, not evidence of a defect.
 
 ## Images and OCR
 
