@@ -3,6 +3,8 @@ package capture
 import (
 	"context"
 
+	"github.com/chromedp/cdproto/emulation"
+
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
 	"github.com/goodblaster/parchmint/internal/log"
@@ -45,13 +47,29 @@ func MarkArchive(ctx context.Context, cfg runner.Config, fileURL string, phrases
 	if layer.Viewport.Width > 0 {
 		cfg.ViewportWidth = int64(layer.Viewport.Width)
 	}
-	cfg.PreNavigate = append(cfg.PreNavigate, actions.BypassCSP())
+	// BypassCSP lets our injected data URIs load — but it also disarms the
+	// archive's script-blocking meta CSP, so any residual script in an
+	// (old or third-party) archive could re-run and mutate the page
+	// mid-mark. Disable page script execution outright; CDP evaluate is
+	// unaffected, and archives are static documents that need no JS.
+	cfg.PreNavigate = append(cfg.PreNavigate,
+		actions.BypassCSP(),
+		emulation.SetScriptExecutionDisabled(true))
 
 	session, err := runner.Start(ctx, fileURL, cfg)
 	if err != nil {
 		return nil, err
 	}
 	defer session.Close()
+
+	// Matches inside same-origin iframes cannot be highlighted in the copy:
+	// re-opened from file://, Chrome treats subframes as cross-origin, so
+	// the walk can't reach their content to wrap marks (and outerHTML would
+	// not serialize a live iframe document anyway). Rare — the capture
+	// pipeline freezes most iframes to images — but honestly reported.
+	if n := frameBlockMatches(layer, phrases); n > 0 {
+		log.With("matches", n).Warn("matches inside same-origin iframes are not highlighted in the marked copy")
+	}
 
 	res := &MarkResult{}
 	err = session.Run(func(ctx context.Context) error {
@@ -117,6 +135,26 @@ func MarkArchive(ctx context.Context, cfg runner.Config, fileURL string, phrases
 		return nil, err
 	}
 	return res, nil
+}
+
+// frameBlockMatches counts phrase matches that fall inside same-origin
+// iframe blocks of the layer (Frame set) — the matches a marked copy
+// cannot highlight.
+func frameBlockMatches(layer *textlayer.Layer, phrases []string) int {
+	n := 0
+	for _, phrase := range phrases {
+		q, err := textlayer.ParseQuery(phrase)
+		if err != nil {
+			continue
+		}
+		for i := range layer.Blocks {
+			if layer.Blocks[i].Frame == "" {
+				continue
+			}
+			n += len(q.FindBlock(&layer.Blocks[i]))
+		}
+	}
+	return n
 }
 
 // inlineLinkedStylesheets replaces every <link rel=stylesheet> with a

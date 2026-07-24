@@ -3,6 +3,8 @@ package capture
 import (
 	"context"
 
+	"github.com/chromedp/cdproto/emulation"
+
 	"github.com/goodblaster/errors"
 	"github.com/goodblaster/parchmint/internal/log"
 	"github.com/goodblaster/parchmint/textlayer"
@@ -40,7 +42,11 @@ func ExportPDF(ctx context.Context, cfg runner.Config, fileURL string, phrases [
 	if layer.Viewport.Width > 0 {
 		cfg.ViewportWidth = int64(layer.Viewport.Width)
 	}
-	cfg.PreNavigate = append(cfg.PreNavigate, actions.BypassCSP())
+	// Same rationale as MarkArchive: archives are static; nothing in them
+	// should execute while we overlay and print (CDP evaluate still works).
+	cfg.PreNavigate = append(cfg.PreNavigate,
+		actions.BypassCSP(),
+		emulation.SetScriptExecutionDisabled(true))
 
 	session, err := runner.Start(ctx, fileURL, cfg)
 	if err != nil {

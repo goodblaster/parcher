@@ -31,7 +31,7 @@ func runIndexCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "Usage: %s index [-engine apple|tesseract] [-lang en-US] <archive.html>\n\nOptions:\n", os.Args[0])
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(args)
+	_ = fs.Parse(reorderFlags(args, nil))
 	if fs.NArg() != 1 {
 		fs.Usage()
 		os.Exit(2)

@@ -33,7 +33,7 @@ func runPdfCommand(args []string) {
 		fmt.Fprintln(os.Stderr, "\nOptions:")
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(args)
+	_ = fs.Parse(reorderFlags(args, nil))
 	if fs.NArg() < 1 {
 		fs.Usage()
 		os.Exit(2)
