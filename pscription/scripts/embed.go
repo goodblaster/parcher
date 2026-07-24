@@ -36,6 +36,7 @@ const (
 	RasterizeCanvases      ScriptFile = "media/rasterize_canvases.js"
 	ReplaceCanvasWithImage ScriptFile = "media/replace_canvas_with_image.js"
 	BakeImageMarks         ScriptFile = "media/bake_image_marks.js"
+	OverlayOcrText         ScriptFile = "media/overlay_ocr_text.js"
 	LocateOpaqueIframes    ScriptFile = "media/locate_opaque_iframes.js"
 	FocusOpaqueIframe      ScriptFile = "media/focus_opaque_iframe.js"
 	ReplaceIframeWithImage ScriptFile = "media/replace_iframe_with_image.js"
