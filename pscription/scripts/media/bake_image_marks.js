@@ -1,12 +1,15 @@
 // Bakes highlight rectangles into images, for marking text that OCR found
 // inside them ("parch mark"). specs maps an image-src hash (FNV-1a, same
-// as text_layer.js) to rectangles in IMAGE-RELATIVE fractions [x, y, w, h]
-// of the displayed box — fractions are scale-invariant, so they apply
-// directly at natural resolution. The highlight is painted into the image
-// bytes and the src swapped, so it survives any reflow and any viewer,
-// with no wrappers, scripts, or CSS tricks. opts: { grayscale: bool
-// (mute the image so the highlight pops), color: css fill,
-// stroke: css stroke }.
+// as text_layer.js) to rectangles in IMAGE-RELATIVE fractions
+// [x, y, w, h, term] of the displayed box — fractions are scale-invariant,
+// so they apply directly at natural resolution; term indexes opts.colors
+// (missing = opts.color). The highlight is painted into the image bytes
+// and the src swapped, so it survives any reflow and any viewer, with no
+// wrappers, scripts, or CSS tricks. Rects paint in term order, so where
+// different-term highlights overlap, the last term wins. opts: {
+// grayscale: bool (mute the image so the highlight pops), color: css
+// fill, stroke: css stroke, colors: [css fill per term],
+// style: 'bg' | 'box' (box = outline only, reads better in B&W) }.
 function bakeImageMarks(specs, opts) {
     const stats = { marked: 0, missed: 0 };
 
@@ -63,18 +66,26 @@ function bakeImageMarks(specs, opts) {
                 }
                 ctx.putImageData(id, 0, 0);
             }
-            for (const [fx, fy, fw, fh] of rects) {
+            for (const [fx, fy, fw, fh, term] of rects) {
                 // A little breathing room so tight OCR boxes don't clip
                 // ascenders/descenders.
                 const px = fh * h * 0.15;
                 const x = fx * w - px, y = fy * h - px;
                 const rw = fw * w + 2 * px, rh = fh * h + 2 * px;
-                ctx.fillStyle = opts.color;
-                ctx.fillRect(x, y, rw, rh);
-                if (opts.stroke) {
-                    ctx.strokeStyle = opts.stroke;
-                    ctx.lineWidth = Math.max(1, h / 400);
+                const fill = (opts.colors && opts.colors[term | 0]) || opts.color;
+                if (opts.style === 'box') {
+                    // Outline only — the text stays unobscured.
+                    ctx.strokeStyle = fill;
+                    ctx.lineWidth = Math.max(2, h / 300);
                     ctx.strokeRect(x, y, rw, rh);
+                } else {
+                    ctx.fillStyle = fill;
+                    ctx.fillRect(x, y, rw, rh);
+                    if (opts.stroke) {
+                        ctx.strokeStyle = opts.stroke;
+                        ctx.lineWidth = Math.max(1, h / 400);
+                        ctx.strokeRect(x, y, rw, rh);
+                    }
                 }
             }
             const mime = src.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';

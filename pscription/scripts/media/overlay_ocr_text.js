@@ -6,9 +6,11 @@
 // that is also selectable, in one element.
 //
 // specs maps an image-src hash (FNV-1a, same as text_layer.js) to its
-// words: { imageHash: [ { t, x, y, w, h, hl } ] } where x/y/w/h are
-// fractions [0,1] of the displayed image box and t is the word text.
-// opts: { color: highlight fill }.
+// words: { imageHash: [ { t, x, y, w, h, hl, c } ] } where x/y/w/h are
+// fractions [0,1] of the displayed image box, t is the word text, and c
+// indexes opts.colors for matched (hl) words. opts: { color: default
+// highlight fill, colors: [css fill per term], style: 'bg' | 'box'
+// (box = outline instead of fill) }.
 //
 // Spans are positioned in absolute PAGE pixels (image box + fraction);
 // printToPDF renders the full page at scale 1 so 1 CSS px == the PDF's
@@ -84,7 +86,14 @@ function overlayOcrText(specs, opts) {
             let css = 'position:absolute;color:transparent;white-space:nowrap;' +
                 'left:' + x + 'px;top:' + y + 'px;width:' + w + 'px;height:' + h + 'px;' +
                 'font-size:' + (h * 0.82) + 'px;line-height:' + h + 'px';
-            if (word.hl) css += ';background:' + (opts.color || 'rgba(255,220,0,0.45)');
+            if (word.hl) {
+                const fill = (opts.colors && opts.colors[word.c | 0]) || opts.color || 'rgba(255,220,0,0.45)';
+                if (opts.style === 'box') {
+                    css += ';outline:2px solid ' + fill + ';outline-offset:-1px';
+                } else {
+                    css += ';background:' + fill;
+                }
+            }
             span.style.cssText = css;
             layer.appendChild(span);
             stats.words++;

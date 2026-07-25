@@ -5,8 +5,16 @@
 // re-walk — every hit lands; there is no "the two walks disagreed" class
 // of miss.
 //
-// marks: { blockId: { ranges: [[start, end], …] } } — start/end are UTF-16
-// offsets into that block's text.
+// marks: { blockId: { ranges: [[start, end, term], …] } } — start/end are
+// UTF-16 offsets into that block's text; term indexes opts.colors (per-
+// query presentation). The Go side sends DISJOINT ranges (overlaps
+// between terms already resolved, last term wins), which is what keeps
+// the single back-to-front wrap pass valid — see below.
+//
+// opts (optional): { colors: [cssColor, …] per term — missing/empty =
+// the default <mark> look; style: 'bg' | 'underline' | 'box' | 'bold' }.
+// Styling is inline on each <mark>, so it survives serialization with no
+// injected CSS.
 //
 // A phrase reads as ONE continuous highlight, spaces included, not
 // per-word confetti: consecutive segments in the same text node merge into
@@ -14,9 +22,38 @@
 // wrap extends across adjoining whitespace. Wraps go back-to-front:
 // surroundContents splits the text node, leaving the original node as the
 // part BEFORE the split, so earlier offsets in the same node stay valid.
-function applyTextMarks(marks) {
+// That invariant is also why overlap resolution CANNOT happen here: a
+// second wrapping pass (e.g. per term) would see nodes the first pass
+// split, and its cached offsets would be stale.
+function applyTextMarks(marks, opts) {
     const cache = window.__pmRunCache || {};
     const stats = { marked: 0, skipped: 0 };
+    const colors = (opts && opts.colors) || [];
+    const styleKind = (opts && opts.style) || 'bg';
+
+    function styleMark(mark, color) {
+        switch (styleKind) {
+            case 'underline':
+                mark.style.background = 'transparent';
+                mark.style.textDecoration = 'underline';
+                mark.style.textDecorationThickness = '0.12em';
+                mark.style.textDecorationSkipInk = 'none';
+                mark.style.textDecorationColor = color || 'gold';
+                break;
+            case 'box':
+                mark.style.background = 'transparent';
+                mark.style.outline = '2px solid ' + (color || 'gold');
+                mark.style.outlineOffset = '1px';
+                break;
+            case 'bold':
+                mark.style.background = 'transparent';
+                mark.style.fontWeight = 'bold';
+                if (color) mark.style.color = color;
+                break;
+            default: // 'bg': browser <mark> yellow unless a color is given
+                if (color) mark.style.backgroundColor = color;
+        }
+    }
 
     for (const blockId in marks) {
         const map = cache[blockId];
@@ -25,7 +62,7 @@ function applyTextMarks(marks) {
             continue;
         }
         const ranges = marks[blockId].ranges.slice().sort((a, b) => b[0] - a[0]);
-        for (const [start, end] of ranges) {
+        for (const [start, end, term] of ranges) {
             const segs = map.filter((s) => s.end > start && s.start < end);
 
             // One wrap per text node covered by the match.
@@ -69,6 +106,9 @@ function applyTextMarks(marks) {
                     range.setEnd(g.node, g.to);
                     const mark = g.node.ownerDocument.createElement('mark');
                     mark.setAttribute('data-parchmint', 'mark');
+                    const color = colors[term] || '';
+                    if (color) mark.setAttribute('data-parchmint-color', color);
+                    styleMark(mark, color);
                     range.surroundContents(mark);
                     wrapped = true;
                 } catch (e) {
