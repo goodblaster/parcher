@@ -15,10 +15,25 @@ import (
 	js "github.com/goodblaster/pscription/scripts"
 )
 
-// opaqueFrameDwell is how long a cross-origin iframe gets in the viewport
-// before its pixels are captured — time for its rAF loops to resume and
-// paint after being throttled offscreen.
-const opaqueFrameDwell = 1500 * time.Millisecond
+// Dwell budget for a cross-origin iframe brought into the viewport: time
+// for its rAF loops to resume and paint after being throttled offscreen.
+// The wait is adaptive — most frames (ads, maps, static embeds) finish
+// painting well inside the budget, and a page with a dozen frames paid
+// the full worst case for every one of them, sequentially.
+//
+//   - nothing is captured before opaqueFrameMinDwell, so a frame that has
+//     not started painting is never mistaken for a finished one;
+//   - after that the crop is sampled every opaqueFramePoll, and accepted
+//     as soon as two consecutive samples are identical AND not a uniform
+//     blank (an unpainted frame is stable-blank, which would otherwise
+//     look "settled" and bake an empty box into the archive);
+//   - a frame that never settles (animation, video, spinner) still gets
+//     the full opaqueFrameDwell, so this is never worse than before.
+const (
+	opaqueFrameDwell    = 1500 * time.Millisecond
+	opaqueFrameMinDwell = 400 * time.Millisecond
+	opaqueFramePoll     = 250 * time.Millisecond
+)
 
 // restoreOccluders un-hides the fixed/sticky elements the LAST
 // focus_opaque_iframe.js call hid for its screenshot; the record format
@@ -96,17 +111,9 @@ func freezeOneIframe(ctx context.Context, id int) error {
 		return errors.New("marked iframe disappeared")
 	}
 
-	if err := chromedp.Sleep(opaqueFrameDwell).Do(sctx); err != nil {
+	cropped, err := dwellUntilPainted(sctx, box.X, box.Y, box.W, box.H)
+	if err != nil {
 		return err
-	}
-
-	shot, err := page.CaptureScreenshot().WithFromSurface(true).Do(sctx)
-	if err != nil {
-		return errors.Wrap(err, "viewport screenshot")
-	}
-	cropped, err := cropPNG(shot, box.X, box.Y, box.W, box.H)
-	if err != nil {
-		return errors.Wrap(err, "crop")
 	}
 
 	dataURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(cropped)
@@ -120,6 +127,62 @@ func freezeOneIframe(ctx context.Context, id int) error {
 		return errors.New("marked iframe disappeared before replacement")
 	}
 	return nil
+}
+
+// dwellUntilPainted holds the frame in the viewport until its pixels stop
+// changing, then returns the cropped still. See the dwell constants for
+// why it is not a flat sleep.
+func dwellUntilPainted(ctx context.Context, x, y, w, h float64) ([]byte, error) {
+	deadline := time.Now().Add(opaqueFrameDwell)
+	if err := chromedp.Sleep(opaqueFrameMinDwell).Do(ctx); err != nil {
+		return nil, err
+	}
+
+	var prev, cur []byte
+	for {
+		shot, err := page.CaptureScreenshot().WithFromSurface(true).Do(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "viewport screenshot")
+		}
+		cur, err = cropPNG(shot, x, y, w, h)
+		if err != nil {
+			return nil, errors.Wrap(err, "crop")
+		}
+		if prev != nil && bytes.Equal(prev, cur) && !isUniform(cur) {
+			return cur, nil
+		}
+		if !time.Now().Before(deadline) {
+			return cur, nil
+		}
+		prev = cur
+		if err := chromedp.Sleep(opaqueFramePoll).Do(ctx); err != nil {
+			return nil, err
+		}
+	}
+}
+
+// isUniform reports whether every pixel is the same colour — the
+// signature of a frame that has not painted yet (or a blank placeholder),
+// which must not be accepted as "settled".
+func isUniform(pngBytes []byte) bool {
+	img, err := png.Decode(bytes.NewReader(pngBytes))
+	if err != nil {
+		return false
+	}
+	b := img.Bounds()
+	if b.Empty() {
+		return true
+	}
+	r0, g0, b0, a0 := img.At(b.Min.X, b.Min.Y).RGBA()
+	for yy := b.Min.Y; yy < b.Max.Y; yy++ {
+		for xx := b.Min.X; xx < b.Max.X; xx++ {
+			r, g, bl, a := img.At(xx, yy).RGBA()
+			if r != r0 || g != g0 || bl != b0 || a != a0 {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // cropPNG cuts the given box (CSS pixels; device scale is 1 in our
