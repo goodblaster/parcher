@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/logos"
@@ -31,25 +30,8 @@ func FetchAndInjectBackgrounds() chromedp.ActionFunc {
 
 		logos.With("count", len(urls)).Info("fetching background images")
 
-		// Step 2: Fetch all images and convert to data URLs
-		urlToDataURL := make(map[string]string)
-		client := &http.Client{
-			Timeout: 30 * time.Second,
-		}
-
-		fetched := 0
-		failed := 0
-
-		for _, url := range urls {
-			dataURL, err := fetchAsDataURL(client, url)
-			if err != nil {
-				logos.With("url", url).With("error", err).Debug("failed to fetch background image")
-				failed++
-				continue
-			}
-			urlToDataURL[url] = dataURL
-			fetched++
-		}
+		// Step 2: Fetch all images (parallel, deduplicated) as data URLs
+		urlToDataURL, fetched, failed := fetchAllAsDataURLs(ctx, urls, "background image")
 
 		logos.With("fetched", fetched).With("failed", failed).Info("fetched background images")
 
@@ -72,9 +54,11 @@ func FetchAndInjectBackgrounds() chromedp.ActionFunc {
 	}
 }
 
-// fetchAsDataURL fetches a URL and converts it to a data URL
-func fetchAsDataURL(client *http.Client, url string) (string, error) {
-	req, err := http.NewRequest("GET", url, nil)
+// fetchAsDataURL fetches a URL and converts it to a data URL. The request
+// carries ctx so a hung server dies with the capture deadline, not after
+// the full client timeout.
+func fetchAsDataURL(ctx context.Context, client *http.Client, url string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return "", err
 	}
