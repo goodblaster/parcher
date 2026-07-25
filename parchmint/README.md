@@ -81,12 +81,52 @@ exit codes for scripting. Disable at capture with `-text=false`.
 
 Built on [pscription](https://github.com/goodblaster/pscription), which does the
 browser driving and page preparation; the capture backends (SingleFile
-HTML, MHT, PDF, screenshots) live here. Requires a Chrome/Chromium
-installation.
+HTML, MHT, PDF, screenshots) live here.
+
+## Requirements
+
+```bash
+go install github.com/goodblaster/parchmint/cmd/parch@latest
+```
+
+- **Go 1.26+** to build (the module requires it; older toolchains will
+  refuse unless they can auto-download a newer one).
+- **Chrome or Chromium**, installed separately — it is not bundled, and
+  every capture drives a real browser. Nothing else is needed for
+  capture, `text`, `lines`, `find`, `mark`, or `pdf`.
+- **An OCR engine, only for `parch index`.** Nothing to install on
+  macOS; a package elsewhere:
+
+  | platform | engine | install |
+  |---|---|---|
+  | macOS | Apple Vision (built in) | none |
+  | Linux | Tesseract | `apt install tesseract-ocr` |
+  | Windows | Tesseract | `choco install tesseract` |
+
+  `parch index` picks the platform default; `-engine tesseract` forces it
+  anywhere. Non-English pages need that language's data too
+  (`tesseract-ocr-deu` for `-lang deu`, etc.). Everything else in the
+  tool works with no OCR engine present — `index` is the only command
+  that reads text out of images.
+
+  **Windows could need no install either.** Windows ships
+  `Windows.Media.Ocr`, which reports the word-level boxes the text layer
+  wants and reads screen-rendered text well. `internal/ocr/windows` is
+  scaffolded for it — selectable as `-engine windows`, erroring until
+  someone implements it — and its package doc carries the API sketch, the
+  build-tag layout to copy from `internal/ocr/apple`, the box
+  normalization contract, and the open question to answer first (whether
+  a stock install recognizes anything without extra language packs).
+  Contributions welcome; it needs a Windows machine to develop against.
+
+Runs on macOS, Linux, and Windows; the Apple Vision engine is compiled in
+on macOS only, and the rest of the tool is pure Go.
 
 **License note:** `capture/vendor/single-file-bundle.js` is
 [single-file-core](https://github.com/gildas-lormeau/single-file-core)
 (AGPL-3.0-or-later), used as the final HTML serializer. All other code is
 original.
 
-Planned: markdown export; a catalog application over many archives.
+Planned: markdown export; native Windows OCR via `Windows.Media.Ocr`
+(scaffolded in `internal/ocr/windows`, so `index` would need no install
+there); a catalog application over many archives.
