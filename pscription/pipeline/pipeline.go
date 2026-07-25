@@ -97,3 +97,18 @@ func Sleep(name string, d time.Duration) Step {
 		},
 	}
 }
+
+// SleepIf is Sleep that only pays when cond says the wait can matter —
+// for pauses that exist to let some EARLIER action's effects play out. If
+// that action did nothing, there is nothing to wait for.
+func SleepIf(name string, d time.Duration, cond func() bool) Step {
+	return Step{
+		Name: name,
+		Action: func(ctx context.Context) error {
+			if !cond() {
+				return nil
+			}
+			return chromedp.Sleep(d).Do(ctx)
+		},
+	}
+}

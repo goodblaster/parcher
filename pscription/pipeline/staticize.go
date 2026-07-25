@@ -24,7 +24,30 @@ import (
 //     thumbnails) still point at external URLs that need embedding.
 //   - Image/background embedding uses server-side fetching, which bypasses
 //     CORS and preserves carousel/late-load images.
+//
+// A quiet-window is a FLOOR on what a wait costs: an already-quiet page
+// still sits through it to prove it stayed quiet. The first check after
+// load earns the full window; by the later re-checks the page has already
+// demonstrated it can go quiet, so they use a shorter one. (The final
+// pre-capture wait was already 300ms on the same reasoning.)
+const (
+	recheckQuiet   = 250 * time.Millisecond
+	recheckQuietMS = 250
+)
+
 func Staticize() Recipe {
+	// Shared by this recipe's dialog steps and the settle that follows
+	// them: the pause exists to let a dismissal's reaction (which may be a
+	// full reload) begin, so with nothing dismissed there is nothing to
+	// wait for.
+	var dismissed actions.DismissTally
+
+	// Image bytes are fetched server-side; starting them as soon as the
+	// URLs are known lets the downloads run THROUGH the steps that follow
+	// (scrolling, layout settling, freezing iframes) instead of after
+	// them. Purely a cache — see actions.PrefetchCache.
+	prefetch := actions.NewPrefetchCache()
+
 	return Recipe{
 		Name: "staticize",
 
@@ -58,12 +81,12 @@ func Staticize() Recipe {
 			// wait-ready absorbs any navigation the click triggered; a
 			// reloaded document also loses the injected overlay CSS, so
 			// hide-overlays runs again afterwards.
-			stepIgnoreError("dismiss-cmp", actions.RunScriptIgnoreError(js.DismissCMP, nil)),
-			stepIgnoreError("dismiss-popups", actions.DismissPopups()),
-			Sleep("settle", 1500*time.Millisecond),
+			stepIgnoreError("dismiss-cmp", actions.DismissCMPCounting(&dismissed)),
+			stepIgnoreError("dismiss-popups", actions.DismissPopupsCounting(&dismissed)),
+			SleepIf("settle", 1500*time.Millisecond, func() bool { return dismissed.Acted }),
 			step("wait-ready", actions.WaitForReady(10*time.Second)),
-			step("wait-network-idle", actions.WaitForNetworkIdle(5*time.Second)),
-			stepIgnoreError("wait-quiet", actions.RunScriptIgnoreError(js.WaitForQuiet, nil, 500, 3000)),
+			step("wait-network-idle", actions.WaitForNetworkIdleQuiet(5*time.Second, recheckQuiet)),
+			stepIgnoreError("wait-quiet", actions.RunScriptIgnoreError(js.WaitForQuiet, nil, recheckQuietMS, 3000)),
 			stepIgnoreError("hide-overlays", actions.RunScriptIgnoreError(js.HideOverlays, nil)),
 			stepIgnoreError("dismiss-cmp", actions.RunScriptIgnoreError(js.DismissCMP, nil)),
 			stepIgnoreError("dismiss-popups", actions.DismissPopups()),
@@ -73,10 +96,12 @@ func Staticize() Recipe {
 			// scroll the viewport through the page for observer-based
 			// loaders, then wait until images actually complete.
 			stepIgnoreError("force-image-loading", actions.RunScriptIgnoreError(js.ForceImageLoading, nil)),
+			stepIgnoreError("prefetch-images", actions.PrefetchImages(prefetch)),
 			stepIgnoreError("scroll-and-wait-images", actions.RunScriptIgnoreError(js.ScrollAndWaitImages, nil)),
-			step("wait-network-idle", actions.WaitForNetworkIdle(5*time.Second)),
+			step("wait-network-idle", actions.WaitForNetworkIdleQuiet(5*time.Second, recheckQuiet)),
 			stepIgnoreError("force-image-loading", actions.RunScriptIgnoreError(js.ForceImageLoading, nil)),
 			step("wait-images", actions.WaitForImages(10*time.Second)),
+			stepIgnoreError("prefetch-images", actions.PrefetchImages(prefetch)),
 
 			// Let carousels/sliders/tab panels finish initializing before
 			// we freeze media and capture: until their JS runs, their slides
@@ -104,20 +129,20 @@ func Staticize() Recipe {
 			step("rasterize-canvases", actions.RasterizeCanvases()),
 			step("capture-video-frame", actions.CaptureVideoFrame()),
 			step("rasterize-font-icons", actions.RasterizeFontIcons()),
-			step("fetch-images", actions.FetchAndInjectImages()),
+			step("fetch-images", actions.FetchAndInjectImagesCached(prefetch)),
 			step("fetch-backgrounds", actions.FetchAndInjectBackgrounds()),
 			// Note: web-font embedding is NOT here. SingleFile inlines fonts
 			// itself, so doing it in shared prep would double-embed them in
 			// HTML. Only Chrome's MHTML snapshot omits fonts, so the MHT
 			// backend embeds them (see capture/mht.go).
-			stepIgnoreError("wait-quiet", actions.RunScriptIgnoreError(js.WaitForQuiet, nil, 500, 2000)),
+			stepIgnoreError("wait-quiet", actions.RunScriptIgnoreError(js.WaitForQuiet, nil, recheckQuietMS, 2000)),
 
 			// Late-loading popups, then a final sweep before capture:
 			// heuristic dismissal, then geometry-based demolition of
 			// anything still covering the page. A short quiet-wait lets the
 			// last DOM edits (overlay removal) paint; it returns as soon as
 			// things settle instead of always burning a fixed pause.
-			step("wait-network-idle", actions.WaitForNetworkIdle(10*time.Second)),
+			step("wait-network-idle", actions.WaitForNetworkIdleQuiet(10*time.Second, recheckQuiet)),
 			stepIgnoreError("dismiss-cmp", actions.RunScriptIgnoreError(js.DismissCMP, nil)),
 			stepIgnoreError("dismiss-popups", actions.DismissPopups()),
 			stepIgnoreError("remove-blocking-overlays", actions.RunScriptIgnoreError(js.RemoveBlockingOverlays, nil)),
