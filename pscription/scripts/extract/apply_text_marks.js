@@ -32,9 +32,14 @@ function applyTextMarks(marks, opts) {
     const styleKind = (opts && opts.style) || 'bg';
 
     function styleMark(mark, color) {
+        // The UA stylesheet gives <mark> `color: black` along with the
+        // yellow background. Any style that drops the background must
+        // also restore `color: inherit`, or marked text on a dark theme
+        // renders black-on-dark.
         switch (styleKind) {
             case 'underline':
                 mark.style.background = 'transparent';
+                mark.style.color = 'inherit';
                 mark.style.textDecoration = 'underline';
                 mark.style.textDecorationThickness = '0.12em';
                 mark.style.textDecorationSkipInk = 'none';
@@ -42,13 +47,14 @@ function applyTextMarks(marks, opts) {
                 break;
             case 'box':
                 mark.style.background = 'transparent';
+                mark.style.color = 'inherit';
                 mark.style.outline = '2px solid ' + (color || 'gold');
                 mark.style.outlineOffset = '1px';
                 break;
             case 'bold':
                 mark.style.background = 'transparent';
                 mark.style.fontWeight = 'bold';
-                if (color) mark.style.color = color;
+                mark.style.color = color || 'inherit';
                 break;
             default: // 'bg': browser <mark> yellow unless a color is given
                 if (color) mark.style.backgroundColor = color;
