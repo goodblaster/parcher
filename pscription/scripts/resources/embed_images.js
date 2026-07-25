@@ -70,12 +70,20 @@ async function embedImages() {
         const dataURL = await fetchAsDataURL(absoluteURL);
 
         if (dataURL) {
-            // Preserve dimensions
-            if (!img.width && img.naturalWidth) {
-                img.width = img.naturalWidth;
-            }
-            if (!img.height && img.naturalHeight) {
-                img.height = img.naturalHeight;
+            // Preserve dimensions — both from the SAME source. Filling
+            // in one from the intrinsic bitmap while the page supplied
+            // the other forces an aspect the image never had (see
+            // inject_images.js, where this turned round avatars into
+            // ovals).
+            if (!img.width || !img.height) {
+                const rect = img.getBoundingClientRect();
+                if (rect.width >= 1 && rect.height >= 1) {
+                    img.width = Math.round(rect.width);
+                    img.height = Math.round(rect.height);
+                } else if (img.naturalWidth && img.naturalHeight) {
+                    img.width = img.naturalWidth;
+                    img.height = img.naturalHeight;
+                }
             }
 
             // Inside <picture>, remove the <source> siblings — otherwise the
