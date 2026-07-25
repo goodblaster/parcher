@@ -27,12 +27,25 @@ async function injectImages(urlToDataURLMap) {
             const dataURL = lookup(img.currentSrc || img.src);
             if (!dataURL) continue;
 
-            // Freeze the rendered size before the swap.
-            if (!img.getAttribute('width') && img.naturalWidth) {
-                img.width = img.naturalWidth;
-            }
-            if (!img.getAttribute('height') && img.naturalHeight) {
-                img.height = img.naturalHeight;
+            // Freeze the size the user actually SAW, and take both
+            // dimensions from the same source. Filling in only the missing
+            // one from the bitmap's INTRINSIC size, while leaving the
+            // page's own value for the other, forces an aspect ratio the
+            // image never had — a square avatar sized by CSS to
+            // height=100 came out 200x100, turning every round avatar
+            // into an oval. The rendered box is what "freeze the rendered
+            // size" always meant; natural size is only a fallback for
+            // images that are not laid out (display:none), where both
+            // values then still come from one bitmap.
+            if (!img.getAttribute('width') || !img.getAttribute('height')) {
+                const rect = img.getBoundingClientRect();
+                if (rect.width >= 1 && rect.height >= 1) {
+                    img.width = Math.round(rect.width);
+                    img.height = Math.round(rect.height);
+                } else if (img.naturalWidth && img.naturalHeight) {
+                    img.width = img.naturalWidth;
+                    img.height = img.naturalHeight;
+                }
             }
 
             if (img.parentElement && img.parentElement.tagName === 'PICTURE') {

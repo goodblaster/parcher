@@ -18,6 +18,17 @@ async function scrollAndWaitImages(stepDelayMs, maxMs) {
         document.body ? document.body.scrollHeight : 0,
         document.documentElement.scrollHeight);
 
+    // A document that already fits in the viewport has nothing to reveal
+    // by scrolling — every element is in view, so IntersectionObservers
+    // have already fired. Nudge scroll-event listeners once (some loaders
+    // wait for the event, not the position) and skip the walk, which
+    // otherwise costs a step pause plus the bottom-and-back round trip.
+    if (pageHeight() <= window.innerHeight + 1) {
+        window.dispatchEvent(new Event('scroll'));
+        await sleep(50);
+        return { steps: 0, height: pageHeight(), elapsed: Date.now() - start, skipped: 'fits-viewport' };
+    }
+
     let steps = 0;
     let y = 0;
 

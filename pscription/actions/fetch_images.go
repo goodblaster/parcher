@@ -11,6 +11,13 @@ import (
 
 // FetchAndInjectImages extracts image URLs, fetches them server-side, and injects as data URIs
 func FetchAndInjectImages() chromedp.ActionFunc {
+	return FetchAndInjectImagesCached(nil)
+}
+
+// FetchAndInjectImagesCached is FetchAndInjectImages that collects
+// anything an earlier PrefetchImages already downloaded (cache may be
+// nil, meaning fetch everything here).
+func FetchAndInjectImagesCached(cache *PrefetchCache) chromedp.ActionFunc {
 	return func(ctx context.Context) error {
 		// Step 1: Extract all image URLs from the page
 		var urls []string
@@ -26,10 +33,18 @@ func FetchAndInjectImages() chromedp.ActionFunc {
 
 		logos.With("count", len(urls)).Info("fetching images")
 
-		// Step 2: Fetch all images (parallel, deduplicated) as data URLs
-		urlToDataURL, fetched, failed := fetchAllAsDataURLs(ctx, urls, "image")
+		// Step 2: Fetch all images (parallel, deduplicated) as data URLs,
+		// collecting whatever the prefetch already has in hand.
+		var urlToDataURL map[string]string
+		var fetched, failed, prefetched int
+		if cache != nil {
+			urlToDataURL, fetched, failed, prefetched = fetchAllCached(ctx, cache, urls, "image")
+		} else {
+			urlToDataURL, fetched, failed = fetchAllAsDataURLs(ctx, urls, "image")
+		}
 
-		logos.With("fetched", fetched).With("failed", failed).Info("fetched images")
+		logos.With("fetched", fetched).With("failed", failed).
+			With("prefetched", prefetched).Info("fetched images")
 
 		if len(urlToDataURL) == 0 {
 			return nil
