@@ -35,6 +35,21 @@ type Snapshot struct {
 	// (PDF paper sizing) read it from here — never from a global.
 	ViewportWidth int64
 
+	// DevicePixelRatio is how many output pixels each CSS pixel became, from
+	// the session config. Raster backends need it because encoder limits are
+	// in DEVICE pixels while layout metrics are in CSS pixels. Zero means 1.
+	DevicePixelRatio float64
+
+	// PaperWidthIn and PaperHeightIn size the PDF sheet, in inches, and are
+	// INDEPENDENT of ViewportWidth: the page keeps the layout it was
+	// rendered at and the output is scaled onto the sheet, so asking for
+	// letter paper does not reflow a desktop layout into a mobile one.
+	// Zero width = derive the sheet from the layout width (the historical
+	// behavior). Zero height = one tall page, or tall pagination when the
+	// content will not fit.
+	PaperWidthIn  float64
+	PaperHeightIn float64
+
 	// TextLayer is the composed parchmint-text/1 document, extracted from
 	// the prepared page when Options.TextLayer is set; the SingleFile
 	// backend embeds it. Nil when extraction was off or failed.
@@ -68,6 +83,11 @@ type Options struct {
 	// Match selects how the Highlight phrases match (zero value = the
 	// default phrase matcher).
 	Match textlayer.MatchOptions
+
+	// PaperWidthIn and PaperHeightIn size the PDF sheet (see Snapshot).
+	// Ignored by every other backend.
+	PaperWidthIn  float64
+	PaperHeightIn float64
 }
 
 // Backend serializes the current page state into a snapshot.
@@ -124,7 +144,13 @@ func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipe
 	}
 	defer session.Close()
 
-	snap = &Snapshot{URL: url, ViewportWidth: cfg.ViewportWidth}
+	snap = &Snapshot{
+		URL:              url,
+		ViewportWidth:    cfg.ViewportWidth,
+		DevicePixelRatio: cfg.DeviceScaleFactor,
+		PaperWidthIn:     opts.PaperWidthIn,
+		PaperHeightIn:    opts.PaperHeightIn,
+	}
 	if err := session.Run(recipe.Action(), captureTitle(&snap.Title)); err != nil {
 		return nil, false, err
 	}
@@ -259,7 +285,12 @@ func normalizeBackgroundAttachment(ctx context.Context) error {
 // (WebP: 16383, JPEG: 65535). Chrome doesn't error past the limit — it
 // silently returns ZERO bytes — so tall pages must be cut off at the
 // bottom to produce anything at all.
-func captureFullImage(ctx context.Context, format page.CaptureScreenshotFormat, quality, maxDim int64) ([]byte, error) {
+//
+// dpr is the device pixel ratio the page is rendering at. It is load-bearing:
+// layout metrics are in CSS pixels but the encoder limit is in DEVICE pixels,
+// so at dpr 2 a 9000-css-px page is an 18000-px image and blows the WebP
+// limit even though the CSS height looks safe. Zero means 1.
+func captureFullImage(ctx context.Context, format page.CaptureScreenshotFormat, quality, maxDim int64, dpr float64) ([]byte, error) {
 	_, _, _, _, _, cssContentSize, err := page.GetLayoutMetrics().Do(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get layout metrics")
@@ -267,16 +298,24 @@ func captureFullImage(ctx context.Context, format page.CaptureScreenshotFormat, 
 	if cssContentSize == nil {
 		return nil, errors.New("layout metrics returned no content size")
 	}
+	if dpr <= 0 {
+		dpr = 1
+	}
+	// The budget the clip must respect, expressed back in CSS pixels.
+	maxCSS := float64(maxDim) / dpr
 	width, height := cssContentSize.Width, cssContentSize.Height
-	if width > float64(maxDim) {
+	if width > maxCSS {
 		// Cropping horizontally would cut into every line of the page;
 		// unlike height there is no sensible partial capture.
-		return nil, errors.Newf("page width %.0f exceeds the %s encoder limit %d", width, format, maxDim)
+		return nil, errors.Newf("page width %.0f css px (%.0f device px at dpr %g) exceeds the %s encoder limit %d",
+			width, width*dpr, dpr, format, maxDim)
 	}
-	if height > float64(maxDim) {
-		log.With("height", int64(height)).With("limit", maxDim).With("format", string(format)).
-			Warn("page taller than the encoder limit; capture is cut off at the bottom (use the png backend for full length)")
-		height = float64(maxDim)
+	if height > maxCSS {
+		log.With("height", int64(height)).With("dpr", dpr).
+			With("deviceHeight", int64(height*dpr)).With("limit", maxDim).
+			With("format", string(format)).
+			Warn("page taller than the encoder limit; capture is cut off at the bottom (use the png backend for full length, or a lower -dpr)")
+		height = maxCSS
 	}
 
 	buf, err := page.CaptureScreenshot().
