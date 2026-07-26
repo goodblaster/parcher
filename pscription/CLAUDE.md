@@ -17,11 +17,11 @@ Serialization lives downstream: [parchmint](../parchmint) (binary `parch`) owns 
 go build -o bin/ ./cmd/...
 ./bin/rx https://news.site @article                  # built-in article extractor
 ./bin/rx https://shop.com dismiss.js prices.js:out   # your own scripts, capture "out"
-./bin/rx -f login-and-scrape.rx https://portal.site  # .rx pscription file
-./bin/rx -prep staticize -v https://example.com      # full prep, debug logging
+./bin/rx -r login-and-scrape.rx https://portal.site  # .rx pscription file
+./bin/rx --prep staticize -v https://example.com     # full prep, debug logging
 ```
 
-stdout carries the JSON report (or one output raw with `-only`); logs go to stderr. No test suite yet; verify library changes by building parchmint's `parch` against this checkout (go.work links them) and running its verification flow.
+stdout carries the JSON report (or one output raw with `--only`); logs go to stderr. No test suite yet; verify library changes by building parchmint's `parch` against this checkout (go.work links them) and running its verification flow.
 
 ## Architecture
 
@@ -59,7 +59,7 @@ Capture-backend invariants (SingleFile options, encoder limits, PDF quirks) live
 
 ## Verification
 
-Prep changes are exercised end-to-end through parchmint: build `parch` against this checkout (go.work links the repos) and run the reference-site verification described in parchmint's CLAUDE.md. For script-only work, `rx -prep staticize -v <url>` shows per-step logs and timings.
+Prep changes are exercised end-to-end through parchmint: build `parch` against this checkout (go.work links the repos) and run the reference-site verification described in parchmint's CLAUDE.md. For script-only work, `rx --prep staticize -v <url>` shows per-step logs and timings.
 
 ## Conventions
 
@@ -67,6 +67,7 @@ Prep changes are exercised end-to-end through parchmint: build `parch` against t
 - New prep behavior = a named pipeline step (JS file → `ScriptFile` constant in `scripts/embed.go` → action wrapper → step in `pipeline/staticize.go` + `Register`), not inline workflow code.
 - Scripts return a small stats object; it lands in step logs.
 - CLI: logs → stderr, content → stdout/file.
+- **Flags use [spf13/pflag](https://github.com/spf13/pflag)**, matching parchmint: long name canonical, short as a shorthand (`StringVarP(&recipe, "recipe", "r", …)`), so `-r`/`--recipe` are one flag. Multi-character flags take two dashes. pflag parses flags anywhere on the line, which is why `rx URL @links --only links` works and why no flag-reordering helper is needed.
 
 ## Known cleanup remaining
 

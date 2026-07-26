@@ -14,4 +14,4 @@ rx="$root/bin/rx"
 url="${1:-https://www.test-site-7.org}"
 
 # "<path>.js:meta" runs the script and captures its return value as "meta".
-"$rx" "$url" "$here/page-metadata.js:meta" -only meta
+"$rx" "$url" "$here/page-metadata.js:meta" --only meta

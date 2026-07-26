@@ -50,9 +50,16 @@ func Start(ctx context.Context, url string, cfg Config) (*Session, error) {
 		}
 	})
 
+	// A zero DeviceScaleFactor is not a valid metric override — callers
+	// that build a Config literally (rather than via DefaultConfig) would
+	// otherwise render at 0x.
+	dpr := cfg.DeviceScaleFactor
+	if dpr <= 0 {
+		dpr = 1.0
+	}
 	tasks := []chromedp.Action{
 		emulation.SetUserAgentOverride(cfg.UserAgent),
-		emulation.SetDeviceMetricsOverride(cfg.ViewportWidth, 0, 1.0, false),
+		emulation.SetDeviceMetricsOverride(cfg.ViewportWidth, 0, dpr, false),
 	}
 	tasks = append(tasks, cfg.PreNavigate...)
 	tasks = append(tasks,

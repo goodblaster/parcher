@@ -21,20 +21,20 @@ scripts returned. Steps are positional and run in order.
 go build -o bin/ ./cmd/...
 
 # built-in article extractor; @article auto-captures under "article"
-./bin/rx https://test-site-7/wiki/Web_archiving @article -only article
+./bin/rx https://test-site-7/wiki/Web_archiving @article --only article
 
 # your own page-context scripts, in order, capturing named outputs
 ./bin/rx https://shop.com dismiss.js load-more.js prices.js:prices | jq .outputs.prices
 
 # crawler without a crawler
-./bin/rx https://blog.site @links -only links | jq -r '.[].url' | xargs -n1 parch
+./bin/rx https://blog.site @links --only links | jq -r '.[].url' | xargs -n1 parch
 
 # a .rx pscription file (or make it executable with a #!/usr/bin/env rx line)
-./bin/rx -f login-and-extract.rx https://portal.site
+./bin/rx -r login-and-extract.rx https://portal.site
 ./login-and-extract.rx https://portal.site
 
 # log in by hand in a visible browser, then extract
-./bin/rx -show https://portal.site wait:user @article
+./bin/rx --show https://portal.site wait:user @article
 ```
 
 **Steps:** `<name>` a built-in step (`dismiss-popups`, `wait-quiet`, …) ·
@@ -42,12 +42,12 @@ go build -o bin/ ./cmd/...
 your own script · `wait:user` / `wait:2s`. The `:out` suffix captures a
 script's return value into the report's `outputs`.
 
-**Prep** (`-prep`): `none`, `minimal` (default — dialogs cleared, content
+**Prep** (`--prep`): `none`, `minimal` (default — dialogs cleared, content
 loaded), or `staticize` (full self-contained preparation).
 
 **Scripts** are parenthesized functions receiving the pscription's `vars` as
 their argument — `((vars) => ({...}))` or the async forms. Output on stdout
-is the JSON report (or one value with `-only`); logs go to stderr; exit
+is the JSON report (or one value with `--only`); logs go to stderr; exit
 status is non-zero if a step failed.
 
 Requires a Chrome/Chromium installation (launched via the DevTools

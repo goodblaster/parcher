@@ -11,4 +11,4 @@ rx="$root/bin/rx"
 
 url="${1:-https://test-site-7/wiki/Web_archiving}"
 
-"$rx" -f "$here/headings.rx" "$url" -only headings
+"$rx" -r "$here/headings.rx" "$url" --only headings

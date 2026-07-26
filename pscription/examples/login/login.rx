@@ -3,7 +3,7 @@
 #
 # Two ways to supply the login, both keeping secrets out of this file:
 #
-#   1) Interactive: run with `rx -show` and let a human log in by hand at the
+#   1) Interactive: run with `rx --show` and let a human log in by hand at the
 #      wait:user pause. No credentials stored anywhere.
 #
 #   2) Automated: put credentials in a gitignored secrets.json, uncomment the
