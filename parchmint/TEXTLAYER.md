@@ -5,7 +5,7 @@ page's rendered text with word-level geometry, extracted at capture time —
 the one moment the rendering is deterministic (fixed viewport, settled
 layout, fonts loaded). It makes the archive searchable and highlightable
 without re-running a browser, and is the substrate for `parch find`,
-capture-time highlighting, OCR merging (`parch index`), and any future
+capture-time highlighting, OCR merging (`parch ocr`), and any future
 catalog/indexing application.
 
 HTML and MHT archives carry it at capture time. A **PDF** carries it too,
@@ -33,7 +33,7 @@ and a marked copy keeps its source's format — `mark` on an .mht writes a
 (stylesheets inlined from the CSSOM; all other parts kept, so cid:
 references keep resolving).
 
-**PDF** (`parch pdf <archive>` — a rendered export, not a capture): the
+**PDF** (`parch render -f pdf <archive>`, or `parch mark -f pdf` — a rendered export, not a capture): the
 layer is attached as an embedded file (`/EmbeddedFiles`, name
 `parchmint-text-layer.json`); viewers ignore it, `parch text`/`find` pull
 it back out. A PDF actually carries *four* searchable/visible layers:
@@ -134,7 +134,7 @@ The layer records every visible image at capture time:
 `hash` is FNV-1a (32-bit, over the src string's UTF-16 code units) of the
 image's src — by extraction time the prep pipeline has inlined images as
 data URIs, so the hash identifies the same bytes the archive carries.
-This lets `parch index` OCR the archive's images and place words in page
+This lets `parch ocr` OCR the archive's images and place words in page
 coordinates **without a browser**: it re-hashes the archive's img srcs to
 pair bytes with entries, OCRs each distinct image once, and appends
 blocks like:
@@ -155,7 +155,7 @@ coordinates derived from the image's recorded box; `image` links the
 block to its source image by hash so a viewer can re-anchor highlights
 to the element (image-relative positions = (word box − image box) /
 image box, which survives reflow when positioned inside a wrapper around
-the img). Re-running `parch index` replaces all `source:"ocr"` blocks.
+the img). Re-running `parch ocr` replaces all `source:"ocr"` blocks.
 OCR never runs at capture time — it is resource-hungry and explicitly
 opt-in.
 
