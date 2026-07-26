@@ -13,8 +13,16 @@ type Config struct {
 	// Context timeout for entire operation
 	Timeout time.Duration
 
-	// Browser viewport width
+	// Browser viewport width, in CSS pixels. This is the LAYOUT width —
+	// it decides which responsive breakpoint the page renders at.
 	ViewportWidth int64
+
+	// DeviceScaleFactor is the device pixel ratio: how many output pixels
+	// each CSS pixel becomes. It is deliberately separate from
+	// ViewportWidth, because layout width and output resolution are
+	// independent — a 1024-wide layout at DPR 2 rasterizes to 2048 px
+	// without changing a single breakpoint. Zero means 1.0.
+	DeviceScaleFactor float64
 
 	// Browser user agent string
 	UserAgent string
@@ -53,10 +61,11 @@ type Config struct {
 // DefaultConfig returns sensible defaults
 func DefaultConfig() Config {
 	return Config{
-		Timeout:       3000 * time.Second,
-		ViewportWidth: config.ViewWidth,
-		UserAgent:     agents.Current,
-		WaitFor:       "body",
-		InitialWait:   1 * time.Second,
+		Timeout:           3000 * time.Second,
+		ViewportWidth:     config.ViewWidth,
+		DeviceScaleFactor: 1.0,
+		UserAgent:         agents.Current,
+		WaitFor:           "body",
+		InitialWait:       1 * time.Second,
 	}
 }
