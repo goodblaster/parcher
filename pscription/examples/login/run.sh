@@ -15,5 +15,5 @@ rx="$root/bin/rx"
 
 url="${1:-https://github.com/login}"
 
-# -show launches a visible browser so you can complete the login.
-"$rx" -show -f "$here/login.rx" "$url" -only content
+# --show launches a visible browser so you can complete the login.
+"$rx" --show -r "$here/login.rx" "$url" --only content

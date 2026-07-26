@@ -6,25 +6,26 @@
 //	# steps given inline (order = execution order)
 //	rx https://news.site @article                       # built-in article extractor
 //	rx https://shop.com dismiss.js prices.js:prices      # your own scripts, capture "prices"
-//	rx https://site.com @links -only links | xargs parch # crawler-without-a-crawler
+//	rx https://site.com @links --only links | xargs parch # crawler-without-a-crawler
 //
 //	# steps given as a .rx pscription file
-//	rx -f login-and-scrape.rx https://portal.site
+//	rx -r login-and-scrape.rx https://portal.site
 //	./login-and-scrape.rx https://portal.site            # if chmod +x with a shebang
 //
-// stdout carries the JSON report (or, with -only, one output raw). Logs go to
+// stdout carries the JSON report (or, with --only, one output raw). Logs go to
 // stderr. Exit status is non-zero if any step failed.
 package main
 
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	flag "github.com/spf13/pflag"
 
 	"github.com/goodblaster/logos"
 	"github.com/goodblaster/pscription/internal/common"
@@ -34,7 +35,7 @@ import (
 
 func main() {
 	var (
-		file    string
+		recipe  string
 		prep    string
 		only    string
 		profile string
@@ -49,24 +50,24 @@ func main() {
 		fmt.Fprintln(os.Stderr, "  <name>          a built-in step (e.g. dismiss-popups, wait-quiet)")
 		fmt.Fprintln(os.Stderr, "  @name[:out]     a built-in script (@article, @links)")
 		fmt.Fprintln(os.Stderr, "  path.js[:out]   your own page-context script")
-		fmt.Fprintln(os.Stderr, "  wait:user       pause for manual action (needs -show)")
+		fmt.Fprintln(os.Stderr, "  wait:user       pause for manual action (needs --show)")
 		fmt.Fprintln(os.Stderr, "  wait:2s         pause for a duration")
 		fmt.Fprintln(os.Stderr, "\nOptions:")
 		flag.PrintDefaults()
 	}
-	flag.StringVar(&file, "f", "", "run a .rx pscription file instead of inline steps")
+	flag.StringVarP(&recipe, "recipe", "r", "", "run this .rx pscription file instead of inline steps")
 	flag.StringVar(&prep, "prep", "", "prep phase: none, minimal (default), staticize")
 	flag.StringVar(&only, "only", "", "print just this output value (raw), not the full report")
-	flag.StringVar(&profile, "profile", "", "persistent Chrome user-data dir; log in once (with -show) and reuse the session on later runs")
+	flag.StringVar(&profile, "profile", "", "persistent Chrome user-data dir; log in once (with --show) and reuse the session on later runs")
 	flag.BoolVar(&headful, "show", false, "launch a visible browser (needed for wait:user)")
 	flag.IntVar(&timeout, "timeout", 120, "timeout in seconds")
-	flag.BoolVar(&verbose, "v", false, "debug logging")
+	flag.BoolVarP(&verbose, "verbose", "v", false, "debug logging")
 
-	// Steps are positional and trail the URL, but flags should still work
-	// anywhere (e.g. `rx URL @links -only links | xargs parch`). Reorder so
-	// flags precede positionals before the stdlib parser, which otherwise
-	// stops at the first positional.
-	flag.CommandLine.Parse(reorderFlags(os.Args[1:], map[string]bool{"show": true, "v": true}))
+	// Steps are positional and trail the URL; pflag parses flags anywhere,
+	// so `rx URL @links --only links | xargs parch` works with no
+	// reordering (Go's stdlib flag package stopped at the first positional,
+	// which is why this used to need a helper).
+	_ = flag.CommandLine.Parse(os.Args[1:])
 
 	level := logos.LevelInfo
 	if verbose {
@@ -81,9 +82,9 @@ func main() {
 
 	// Shebang form: `./thing.rx https://site` execs `rx ./thing.rx
 	// https://site`, so a .rx file as the first positional means "run this
-	// pscription". Equivalent to -f.
-	if file == "" && len(args) > 0 && strings.HasSuffix(args[0], ".rx") {
-		file = args[0]
+	// pscription". Equivalent to --recipe.
+	if recipe == "" && len(args) > 0 && strings.HasSuffix(args[0], ".rx") {
+		recipe = args[0]
 		args = args[1:]
 	}
 
@@ -96,11 +97,11 @@ func main() {
 		url = "https://" + url
 	}
 
-	// Build the pscription: from a file, or from inline step tokens.
+	// Build the pscription: from a recipe file, or from inline step tokens.
 	var p *pscription.Pscription
 	var err error
-	if file != "" {
-		p, err = pscription.ParseFile(file)
+	if recipe != "" {
+		p, err = pscription.ParseFile(recipe)
 		if err != nil {
 			die(err)
 		}
@@ -151,7 +152,7 @@ func main() {
 }
 
 // emit writes the report to stdout: the whole thing as JSON, or just one
-// named output (raw string as-is, other values as JSON) with -only.
+// named output (raw string as-is, other values as JSON) with --only.
 func emit(report *pscription.Report, only string) error {
 	if only != "" {
 		val, ok := report.Outputs[only]
@@ -214,29 +215,4 @@ func prepareProfileDir(dir string) (string, error) {
 		return "", fmt.Errorf("cannot create profile dir %q: %w", dir, err)
 	}
 	return dir, nil
-}
-
-// reorderFlags moves flag tokens ahead of positional tokens so trailing
-// flags parse. boolFlags names the flags that take no value (so the token
-// after them isn't mistaken for their value).
-func reorderFlags(args []string, boolFlags map[string]bool) []string {
-	var flags, pos []string
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if a == "-" || !strings.HasPrefix(a, "-") {
-			pos = append(pos, a)
-			continue
-		}
-		flags = append(flags, a)
-		name := strings.TrimLeft(a, "-")
-		if strings.Contains(a, "=") || boolFlags[name] {
-			continue
-		}
-		// Consumes the following token as its value.
-		if i+1 < len(args) {
-			i++
-			flags = append(flags, args[i])
-		}
-	}
-	return append(flags, pos...)
 }

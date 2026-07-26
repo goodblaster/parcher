@@ -11,6 +11,8 @@ require (
 	github.com/joho/godotenv v1.5.1
 )
 
+require github.com/spf13/pflag v1.0.10
+
 require (
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/go-json-experiment/json v0.0.0-20250517221953-25912455fbc8 // indirect

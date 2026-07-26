@@ -5,7 +5,7 @@
 # a `key: value` directive.
 #
 # Run it:
-#   rx -f headings.rx <url>
+#   rx -r headings.rx <url>
 #   rx headings.rx <url>          # .rx as the first arg works too
 #   ./headings.rx <url>           # or make it executable, if rx is on PATH
 #

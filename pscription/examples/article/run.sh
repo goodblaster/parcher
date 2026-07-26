@@ -12,10 +12,10 @@ rx="$root/bin/rx"
 
 url="${1:-https://test-site-7/wiki/Web_archiving}"
 
-# @article auto-captures under the name "article"; -only prints that value.
+# @article auto-captures under the name "article"; --only prints that value.
 # Pipe through jq for the text field if jq is installed.
 if command -v jq >/dev/null; then
-	"$rx" "$url" @article -only article | jq -r '.title, "", .text'
+	"$rx" "$url" @article --only article | jq -r '.title, "", .text'
 else
-	"$rx" "$url" @article -only article
+	"$rx" "$url" @article --only article
 fi
