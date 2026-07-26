@@ -8,6 +8,7 @@
 //	parch -f png https://example.com           → full-page screenshot
 //	parch -links new-tab https://example.com   → external links open in a new tab
 //	parch -width 1280 https://example.com      → render at a 1280px-wide layout
+//	parch -M "phrase" https://example.com      → mark matches at capture time
 //	parch -cache ~/.parch/cache https://…      → reuse an HTTP cache across runs
 //	parch https://example.com > page.html      → content on stdout when piped
 //
@@ -22,8 +23,8 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
+	flag "github.com/spf13/pflag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,12 +52,12 @@ var version = "dev"
 // subcommands maps each archive-ops command to its entry point — the
 // dispatch table for both main and `parch help <cmd>`.
 var subcommands = map[string]func([]string){
-	"text":  runTextCommand,
-	"lines": runLinesCommand,
-	"find":  runFindCommand,
-	"index": runIndexCommand,
-	"mark":  runMarkCommand,
-	"pdf":   runPdfCommand,
+	"text":   runTextCommand,
+	"lines":  runLinesCommand,
+	"find":   runFindCommand,
+	"ocr":    runOCRCommand,
+	"mark":   runMarkCommand,
+	"render": runRenderCommand,
 }
 
 func main() {
@@ -86,6 +87,8 @@ func main() {
 		headful bool
 		timeout int
 		width   int
+		dpr     float64
+		paper   string
 		text    bool
 		favicon bool
 		verbose bool
@@ -95,21 +98,19 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <url>              capture a page as one file\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "       %s <command> [options] <args>   work with captured archives\n", os.Args[0])
 		fmt.Fprintln(os.Stderr, "\nCommands:")
-		fmt.Fprintln(os.Stderr, "  text     plain text back out of an archive (-json: the raw layer; -blocks: NDJSON)")
+		fmt.Fprintln(os.Stderr, "  text     plain text back out of an archive (--json: the raw layer; --blocks: NDJSON)")
 		fmt.Fprintln(os.Stderr, "  lines    one plain-text line per paragraph block")
 		fmt.Fprintln(os.Stderr, "  find     grep across archives' text layers (multi-file, -l/-c/-q/-r, regex/fuzzy)")
-		fmt.Fprintln(os.Stderr, "  index    OCR an archive's images into its text layer")
-		fmt.Fprintln(os.Stderr, "  mark     write a highlighted copy of an archive")
-		fmt.Fprintln(os.Stderr, "  pdf      render an archive to a searchable, highlighted PDF")
+		fmt.Fprintln(os.Stderr, "  ocr      OCR an archive's images into its text layer (needed to mark image text)")
+		fmt.Fprintln(os.Stderr, "  mark     mark an archive and render it into any format")
+		fmt.Fprintln(os.Stderr, "  render   convert an archive into another format, without marking")
 		fmt.Fprintln(os.Stderr, "  version  print the parch version")
 		fmt.Fprintln(os.Stderr, "  help     usage for a command (`parch help find`)")
 		fmt.Fprintln(os.Stderr, "\nCapture options:")
 		flag.PrintDefaults()
 	}
-	flag.StringVar(&output, "o", "", "output file; '-' for stdout (default: config filename, else derived from URL)")
-	flag.StringVar(&output, "output", "", "alias of -o")
-	flag.StringVar(&format, "f", defFormat, "output format: html (self-contained page), mht, pdf, png, jpeg, webp")
-	flag.StringVar(&format, "format", defFormat, "alias of -f")
+	flag.StringVarP(&output, "output", "o", "", "output file; '-' for stdout (default: config filename, else derived from URL)")
+	flag.StringVarP(&format, "format", "f", defFormat, "output format: html (self-contained page), mht, pdf, png, jpeg, webp")
 	flag.StringVar(&links, "links", defLinks, "link policy: keep (unchanged), new-tab (external links open in a new tab), disable (links kept but unclickable)")
 	flag.StringVar(&rxFile, "rx", "", "run a .rx pscription as the prep before serializing (e.g. to log in first)")
 	flag.StringVar(&profile, "profile", "", "persistent Chrome user-data dir; log in once and reuse the session")
@@ -117,12 +118,15 @@ func main() {
 	flag.BoolVar(&headful, "show", false, "launch a visible browser (e.g. to log in at a wait:user step)")
 	flag.IntVar(&timeout, "timeout", defTimeout, "timeout in seconds")
 	var highlight stringsFlag
-	flag.IntVar(&width, "width", 0, "viewport/layout width in px (0 = default 1600)")
+	flag.IntVar(&width, "width", 0, "viewport/layout width in px — picks the responsive breakpoint (0 = default 1600)")
+	flag.Float64Var(&dpr, "dpr", 0, "device pixel ratio: output pixels per CSS pixel, e.g. 2 for retina rasters (0 = 1)")
+	flag.StringVar(&paper, "paper", "", "pdf sheet size, independent of -width: auto (default, sheet follows the layout), letter, legal, tabloid, a3, a4, a5, inches (10.5), or WxH (8.5x11)")
 	flag.BoolVar(&text, "text", true, "embed the text layer in HTML archives (read back with 'parch text <file>')")
 	flag.BoolVar(&favicon, "favicon", true, "embed the page favicon in HTML/MHT archives")
-	flag.Var(&highlight, "highlight", "wrap matches of this phrase in <mark> before capture (repeatable; same matching as 'parch find')")
-	flag.BoolVar(&verbose, "v", false, "debug logging")
-	flag.BoolVar(&verbose, "verbose", false, "alias of -v")
+	flag.VarP(&highlight, "mark", "M", "mark matches of this phrase at capture time, in every format (repeatable; same matching as 'parch find')")
+	flag.Var(&highlight, "highlight", "deprecated spelling of --mark")
+	_ = flag.CommandLine.MarkDeprecated("highlight", "use --mark")
+	flag.BoolVarP(&verbose, "verbose", "v", false, "debug logging")
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -154,13 +158,20 @@ func main() {
 		logger.With("config", path).Debug("loaded config")
 	}
 
-	format = pickStr(set, "f", format, cfg.Defaults.Format, defFormat)
+	format = pickStr(set, "format", format, cfg.Defaults.Format, defFormat)
 	links = pickStr(set, "links", links, cfg.Defaults.Links, defLinks)
 	profile = pickStr(set, "profile", profile, cfg.Defaults.Profile, "")
 	cache = pickStr(set, "cache", cache, cfg.CacheDir, "")
 	timeout = pickInt(set, "timeout", timeout, cfg.Defaults.Timeout, defTimeout)
 	width = pickInt(set, "width", width, cfg.Defaults.Width, 0)
+	paper = pickStr(set, "paper", paper, cfg.Defaults.Paper, "")
 	favicon = pickBool(set, "favicon", favicon, cfg.Defaults.Favicon, true)
+
+	paperWidthIn, paperHeightIn, err := parsePaper(paper)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "parch: "+err.Error())
+		os.Exit(2)
+	}
 
 	backend := backendFor(format)
 	if backend == nil {
@@ -206,6 +217,9 @@ func main() {
 	if width > 0 {
 		runCfg.ViewportWidth = int64(width)
 	}
+	if dpr > 0 {
+		runCfg.DeviceScaleFactor = dpr
+	}
 	if profile != "" {
 		dir, err := prepareDir(config.ExpandPath(profile))
 		if err != nil {
@@ -228,9 +242,11 @@ func main() {
 	start := time.Now()
 
 	opts := capture.Options{
-		TextLayer: text && (format == "html" || format == "mht"),
-		Favicon:   favicon && (format == "html" || format == "mht"),
-		Highlight: highlight,
+		TextLayer:     text && (format == "html" || format == "mht"),
+		Favicon:       favicon && (format == "html" || format == "mht"),
+		Highlight:     highlight,
+		PaperWidthIn:  paperWidthIn,
+		PaperHeightIn: paperHeightIn,
 	}
 	snap, err := capture.CaptureWithOptions(ctx, url, runCfg, recipe, backend, opts)
 	if err != nil {
@@ -239,7 +255,7 @@ func main() {
 	}
 
 	// Decide the destination now that we have the title (needed by {title}).
-	dest, toStdout := resolveDest(set["o"], output, cfg, url, snap.Title, backend.Ext(), start)
+	dest, toStdout := resolveDest(set["output"], output, cfg, url, snap.Title, backend.Ext(), start)
 
 	if toStdout {
 		if _, err := os.Stdout.Write(snap.Bytes); err != nil {
@@ -339,23 +355,13 @@ func resolveDest(explicitO bool, output string, cfg config.Config, url, title, e
 	return filepath.Join(outputDir, name), false
 }
 
-// captureAliases maps long flag spellings to the canonical short names
-// used in config-precedence checks, so `--format mht` counts as an
-// explicit -f.
-var captureAliases = map[string]string{"format": "f", "output": "o", "verbose": "v"}
-
 // explicitFlags reports which flags were actually given on the command line
 // (as opposed to left at their default), so config can fill only the rest.
-// Aliases are folded onto their canonical name.
+// pflag gives every flag one canonical name, so a shorthand and its long
+// form are already the same entry.
 func explicitFlags() map[string]bool {
 	set := map[string]bool{}
-	flag.Visit(func(f *flag.Flag) {
-		name := f.Name
-		if canon, ok := captureAliases[name]; ok {
-			name = canon
-		}
-		set[name] = true
-	})
+	flag.Visit(func(f *flag.Flag) { set[f.Name] = true })
 	return set
 }
 
@@ -405,6 +411,10 @@ func (s *stringsFlag) Set(v string) error {
 	*s = append(*s, v)
 	return nil
 }
+
+// Type names the value in help output ("-M, --mark phrase"); pflag requires
+// it, and it replaces the backquote trick Go's flag package needed.
+func (s *stringsFlag) Type() string { return "phrase" }
 
 // prepareDir expands ~ (handled by the caller) and ensures the directory exists.
 func prepareDir(dir string) (string, error) {

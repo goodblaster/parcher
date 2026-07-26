@@ -3,8 +3,8 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"flag"
 	"fmt"
+	flag "github.com/spf13/pflag"
 	"io"
 	"os"
 
@@ -21,8 +21,8 @@ func runTextCommand(args []string) {
 	asJSON := fs.Bool("json", false, "print the raw text layer as indented JSON")
 	asBlocks := fs.Bool("blocks", false, "one JSON object per block, newline-delimited — paragraph feed for external indexers (Elasticsearch bulk, jq)")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s text [-json|-blocks] <archive.html> ('-' = stdin)\n\n", os.Args[0])
-		fmt.Fprintln(os.Stderr, "-blocks emits NDJSON: each line is one paragraph-level block with the")
+		fmt.Fprintf(os.Stderr, "Usage: %s text [--json|--blocks] <archive.html> ('-' = stdin)\n\n", os.Args[0])
+		fmt.Fprintln(os.Stderr, "--blocks emits NDJSON: each line is one paragraph-level block with the")
 		fmt.Fprintln(os.Stderr, "archive identity (url, capturedAt) repeated, so every line stands")
 		fmt.Fprintln(os.Stderr, "alone as an indexable document. Note the text is RAW rendered text —")
 		fmt.Fprintln(os.Stderr, "it can contain soft hyphens, zero-width characters, and curly quotes;")
@@ -31,13 +31,13 @@ func runTextCommand(args []string) {
 		fmt.Fprintln(os.Stderr, "\nOptions:")
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(reorderFlags(args, map[string]bool{"json": true, "blocks": true}))
+	_ = fs.Parse(args)
 	if fs.NArg() != 1 {
 		fs.Usage()
 		os.Exit(2)
 	}
 	if *asJSON && *asBlocks {
-		fmt.Fprintln(os.Stderr, "parch: -json and -blocks are mutually exclusive")
+		fmt.Fprintln(os.Stderr, "parch: --json and --blocks are mutually exclusive")
 		os.Exit(2)
 	}
 
