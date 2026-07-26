@@ -2,8 +2,8 @@ package main
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
+	flag "github.com/spf13/pflag"
 	"os"
 	"strings"
 )
@@ -19,7 +19,7 @@ func runLinesCommand(args []string) {
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s lines <archive.html|.mht|.pdf> ('-' = stdin)\n\n", os.Args[0])
 		fmt.Fprintln(os.Stderr, "Prints one line per paragraph block of the embedded text layer —")
-		fmt.Fprintln(os.Stderr, "plain text only. For block ids and provenance use `text -blocks`.")
+		fmt.Fprintln(os.Stderr, "plain text only. For block ids and provenance use `text --blocks`.")
 	}
 	_ = fs.Parse(args)
 	if fs.NArg() != 1 {

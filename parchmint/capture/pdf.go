@@ -7,6 +7,7 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/parchmint/internal/log"
 )
 
 // PDF captures the page as a PDF via Chrome's Page.printToPDF. Unlike the
@@ -21,11 +22,11 @@ import (
 //   - backgrounds printed (dark sections stay dark)
 //   - paper width = our desktop viewport width, so responsive sites render
 //     their desktop layout instead of reflowing to a narrow "paper" mobile
-//     layout
+//     layout — unless Snapshot.PaperWidthIn asks for a real sheet size, in
+//     which case the layout is kept and the output is scaled to fit
 //   - zero margins (edge-to-edge, like the screen)
 //   - a single tall page when the content fits under Chrome's page-size
-//     limit (no mid-content page breaks); natural pagination as a fallback
-//     for very long pages
+//     limit (no mid-content page breaks); pagination for very long pages
 type PDF struct{}
 
 func (PDF) Name() string { return "pdf" }
@@ -34,6 +35,17 @@ func (PDF) Ext() string  { return ".pdf" }
 // Chrome/PDF cap each page dimension at ~200 inches. Stay just under it and
 // paginate beyond that.
 const maxPaperInches = 199.0
+
+// tallPaperInches is the height used when content will not fit on one page.
+// Chrome's own fallback is LETTER (11in), which shreds a 25-foot page into
+// dozens of stubs; a tall sheet keeps it to a handful.
+const tallPaperInches = 190.0
+
+// Chrome's printToPDF accepts a scale in [0.1, 2.0].
+const (
+	minPrintScale = 0.1
+	maxPrintScale = 2.0
+)
 
 const cssPxPerInch = 96.0
 
@@ -65,28 +77,60 @@ func (PDF) Action(snap *Snapshot) chromedp.ActionFunc {
 			return errors.Wrap(err, "failed to get layout metrics")
 		}
 
-		// Paper width = the width the page was actually laid out at: the
-		// session's viewport width, falling back to the measured content
-		// width for callers that built the Snapshot themselves.
+		// Layout width: the width the page was actually rendered at (the
+		// session's viewport), falling back to the measured content width
+		// for callers that built the Snapshot themselves.
 		widthPx := float64(snap.ViewportWidth)
 		if widthPx <= 0 {
 			widthPx = cssContentSize.Width
 		}
-		widthIn := widthPx / cssPxPerInch
 		heightPx := cssContentSize.Height + 4
+
+		// Paper width is INDEPENDENT of layout width. By default the paper
+		// is whatever the layout happens to measure (1600 css px → 16.67in),
+		// which is why an unconfigured capture yields a very wide page. When
+		// a paper width is requested, the layout is unchanged — no reflow,
+		// no different breakpoint — and the rendered content is scaled to
+		// fit the sheet instead.
+		widthIn := widthPx / cssPxPerInch
+		scale := 1.0
+		if snap.PaperWidthIn > 0 {
+			widthIn = snap.PaperWidthIn
+			scale = (widthIn * cssPxPerInch) / widthPx
+			if scale < minPrintScale || scale > maxPrintScale {
+				clamped := min(max(scale, minPrintScale), maxPrintScale)
+				log.With("scale", scale).With("clamped", clamped).
+					With("paperWidthIn", widthIn).With("layoutWidthPx", widthPx).
+					Warn("requested paper width needs a print scale outside Chrome's range; clamping (content will not fill the sheet)")
+				scale = clamped
+			}
+		}
 
 		params := page.PrintToPDF().
 			WithPrintBackground(true).
 			WithPreferCSSPageSize(false).
-			WithScale(1).
+			WithScale(scale).
 			WithMarginTop(0).WithMarginBottom(0).WithMarginLeft(0).WithMarginRight(0).
 			WithPaperWidth(widthIn)
 
-		// One tall page preserves the continuous layout; only fall back to
-		// pagination (default paper height) when the page is too long for a
-		// single PDF page.
-		if heightIn := heightPx / cssPxPerInch; heightIn > 0 && heightIn <= maxPaperInches {
-			params = params.WithPaperHeight(heightIn)
+		// Height, in three cases. The scale applies to height as well as
+		// width, so it is folded in here — a scaled-down layout needs a
+		// proportionally shorter sheet.
+		contentIn := (heightPx * scale) / cssPxPerInch
+		switch {
+		case snap.PaperHeightIn > 0:
+			// A real sheet was asked for (letter, a4, …): paginate onto it.
+			params = params.WithPaperHeight(snap.PaperHeightIn)
+		case contentIn > 0 && contentIn <= maxPaperInches:
+			// One tall page preserves the continuous layout — no
+			// mid-content page breaks.
+			params = params.WithPaperHeight(contentIn)
+		default:
+			// Too long for one page. Chrome's own fallback is LETTER, which
+			// turns a 25-foot page into dozens of stubs; paginate tall.
+			log.With("contentIn", contentIn).With("paperHeightIn", tallPaperInches).
+				Info("content exceeds the single-page limit; paginating at a tall page height")
+			params = params.WithPaperHeight(tallPaperInches)
 		}
 
 		data, _, err := params.Do(ctx)

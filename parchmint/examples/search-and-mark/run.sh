@@ -7,7 +7,7 @@
 #   1. parch <url>          → one self-contained file with an embedded
 #                             "text layer": every rendered word plus its
 #                             page coordinates (TEXTLAYER.md)
-#   2. parch index <file>   → OCR the archive's images (cover art,
+#   2. parch ocr <file>   → OCR the archive's images (cover art,
 #                             charts, frozen canvases…) into that layer.
 #                             Works on the file alone — no browser, and
 #                             explicitly opt-in because OCR is expensive
@@ -41,7 +41,7 @@ echo "1) Capturing $url (text layer embeds automatically) ..."
 
 echo
 echo "2) OCR-indexing the archive's images ..."
-"$parch" index "$archive"
+"$parch" ocr "$archive"
 
 echo
 echo "3) Searching the file for \"music\" — img hits are inside images:"
@@ -49,7 +49,7 @@ echo "3) Searching the file for \"music\" — img hits are inside images:"
 
 echo
 echo "4) Highlighting several phrases at once (grayscale makes image hits pop) ..."
-"$parch" mark -grayscale -o "$out/page.marked.html" "music" "iphone" "trade in" "$archive" 2>&1 |
+"$parch" mark --grayscale -o "$out/page.marked.html" "music" "iphone" "trade in" "$archive" 2>&1 |
 	grep -vE '^[0-9]{4}-' || true
 
 echo

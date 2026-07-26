@@ -2,8 +2,8 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
+	flag "github.com/spf13/pflag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,24 +20,15 @@ func runFindCommand(args []string) {
 	asJSON := fs.Bool("json", false, "hits as JSON: one indented document for one file, NDJSON (an object per hit) for several")
 	context := fs.Int("context", 40, "context characters shown on each side of a match")
 	var invert, listFiles, countOnly, quiet, withFile, noFile, nullSep bool
-	fs.BoolVar(&invert, "v", false, "select blocks with NO match instead of hits")
-	fs.BoolVar(&invert, "invert", false, "alias of -v")
-	fs.BoolVar(&listFiles, "l", false, "print only the names of files with matches")
-	fs.BoolVar(&listFiles, "files-with-matches", false, "alias of -l")
-	fs.BoolVar(&countOnly, "c", false, "print only a match count per file")
-	fs.BoolVar(&countOnly, "count", false, "alias of -c")
-	fs.BoolVar(&quiet, "q", false, "print nothing; exit status only")
-	fs.BoolVar(&quiet, "quiet", false, "alias of -q")
-	maxCount := fs.Int("m", 0, "stop after this many matches per file (0 = unlimited)")
-	fs.IntVar(maxCount, "max-count", 0, "alias of -m")
-	recurseDir := fs.String("r", "", "also search every archive under this directory (.html, .htm, .mht, .mhtml, .pdf)")
-	fs.StringVar(recurseDir, "recursive", "", "alias of -r")
-	fs.BoolVar(&withFile, "H", false, "always prefix output with the file name")
-	fs.BoolVar(&withFile, "with-filename", false, "alias of -H")
-	fs.BoolVar(&noFile, "h", false, "never prefix output with the file name (use -help for usage)")
-	fs.BoolVar(&noFile, "no-filename", false, "alias of -h")
-	fs.BoolVar(&nullSep, "0", false, "with -l: NUL-separated names, for xargs -0")
-	fs.BoolVar(&nullSep, "null", false, "alias of -0")
+	fs.BoolVarP(&invert, "invert", "v", false, "select blocks with NO match instead of hits")
+	fs.BoolVarP(&listFiles, "files-with-matches", "l", false, "print only the names of files with matches")
+	fs.BoolVarP(&countOnly, "count", "c", false, "print only a match count per file")
+	fs.BoolVarP(&quiet, "quiet", "q", false, "print nothing; exit status only")
+	maxCount := fs.IntP("max-count", "m", 0, "stop after this many matches per file (0 = unlimited)")
+	recurseDir := fs.StringP("recursive", "r", "", "also search every archive under this directory (.html, .htm, .mht, .mhtml, .pdf)")
+	fs.BoolVarP(&withFile, "with-filename", "H", false, "always prefix output with the file name")
+	fs.BoolVarP(&noFile, "no-filename", "h", false, "never prefix output with the file name (use -help for usage)")
+	fs.BoolVarP(&nullSep, "null", "0", false, "with -l: NUL-separated names, for xargs -0")
 	colorMode := fs.String("color", "auto", "colorize matches in human output: auto (only on a terminal), always, never")
 	match := registerMatchFlags(fs)
 	fs.Usage = func() {
@@ -59,14 +50,7 @@ func runFindCommand(args []string) {
 		fmt.Fprintln(os.Stderr, "\nOptions:")
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(reorderFlags(args, matchBoolFlags(map[string]bool{
-		"json": true, "v": true, "invert": true,
-		"l": true, "files-with-matches": true,
-		"c": true, "count": true,
-		"q": true, "quiet": true,
-		"H": true, "with-filename": true, "h": true, "no-filename": true,
-		"0": true, "null": true,
-	})))
+	_ = fs.Parse(args)
 	if fs.NArg() < 2 && !(fs.NArg() == 1 && *recurseDir != "") {
 		fs.Usage()
 		os.Exit(2)

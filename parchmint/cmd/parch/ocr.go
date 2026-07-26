@@ -2,8 +2,8 @@ package main
 
 import (
 	"encoding/base64"
-	"flag"
 	"fmt"
+	flag "github.com/spf13/pflag"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,25 +14,24 @@ import (
 	"github.com/goodblaster/parchmint/textlayer"
 )
 
-// runIndexCommand implements `parch index <archive.html>`: OCR the
+// runOCRCommand implements `parch ocr <archive.html>`: OCR the
 // archive's images and merge the recognized text into the embedded text
 // layer as source:"ocr" blocks, so text inside images (charts, frozen
 // canvases and iframes, photos of signs) becomes searchable and
 // highlightable later — including by external indexers that only see the
 // layer. OCR is resource-hungry, so it never runs at capture time; this
 // command is the explicit opt-in.
-func runIndexCommand(args []string) {
-	fs := flag.NewFlagSet("index", flag.ExitOnError)
+func runOCRCommand(args []string) {
+	fs := flag.NewFlagSet("ocr", flag.ExitOnError)
 	engineName := fs.String("engine", ocr.Default(), "OCR engine: apple (macOS Vision) or tesseract")
 	langFlag := fs.String("lang", "", "comma-separated OCR language hints (default: the page's declared language, else en-US)")
 	minSize := fs.Int("min", 32, "skip images displayed smaller than this (px, either dimension)")
-	output := fs.String("o", "", "write result here instead of updating the archive in place")
-	fs.StringVar(output, "output", "", "alias of -o")
+	output := fs.StringP("output", "o", "", "write result here instead of updating the archive in place")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s index [-engine apple|tesseract] [-lang en-US] <archive.html>\n\nOptions:\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s ocr [--engine apple|tesseract] [--lang en-US] <archive.html>\n\nOptions:\n", os.Args[0])
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(reorderFlags(args, nil))
+	_ = fs.Parse(args)
 	if fs.NArg() != 1 {
 		fs.Usage()
 		os.Exit(2)

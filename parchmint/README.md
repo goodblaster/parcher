@@ -9,10 +9,10 @@ Cross your eyes and it's a parchment; but it's mint perfect.
 
 ```bash
 parch https://www.test-site-1            # → test-site-1.html — one file, renders offline
-parch index test-site-1.html             # OCR the images in the file (cover art, charts…)
+parch ocr test-site-1.html               # OCR the images in the file (cover art, charts…)
 parch find "music" test-site-1.html      # search the FILE — no browser, no network;
                                        #   finds "music" even inside music-service tiles
-parch mark -grayscale "music" "iphone" test-site-1.html
+parch mark --grayscale "music" "iphone" test-site-1.html
                                        # → test-site-1.marked.html: every match highlighted —
                                        #   image matches painted into the image itself
 ```
@@ -33,15 +33,15 @@ parch -f mht https://example.com           # Chrome MHTML instead of HTML
 parch -f pdf https://example.com           # PDF (selectable text, opens anywhere)
 parch -f png https://example.com           # full-page screenshot (lossless)
 parch -f jpeg https://example.com          # full-page screenshot (smaller)
-parch -links new-tab https://example.com   # external links open in a new tab
-parch -links disable https://example.com   # links kept but unclickable
-parch -favicon=false https://example.com   # skip embedding the page favicon
+parch --links new-tab https://example.com   # external links open in a new tab
+parch --links disable https://example.com   # links kept but unclickable
+parch --favicon=false https://example.com   # skip embedding the page favicon
                                            #   (embedded as a data URI: shown by
                                            #    Chromium/Firefox, ignored by Safari)
 parch https://example.com > page.html      # content on stdout when piped
 parch text page.html                       # rendered text back out of an archive
 parch lines page.html                      # one plain-text line per paragraph — pipe food
-parch text -blocks page.html               # NDJSON, one paragraph per line with ids and
+parch text --blocks page.html               # NDJSON, one paragraph per line with ids and
                                            # provenance — feed for external indexers
 parch find "some phrase" page.html         # search an archive, no browser needed
 parch find -l -0 "phrase" *.html |         # …or a whole corpus: grep flags (-l -c -q -m,
@@ -50,16 +50,19 @@ parch find -l -0 "phrase" *.html |         # …or a whole corpus: grep flags (-
 parch find -e 'trilob(ite|ita)s?' p.html   # regex mode; also -z 2 fuzzy (OCR typos),
                                            # -w whole words, -s case-sensitive, -F literal,
                                            # --in td,th and --source ocr scoping
-parch -highlight "phrase" https://…        # capture with matches pre-highlighted
-parch index page.html                      # OCR the archive's images (charts, frozen
-                                           # canvases/iframes) into the text layer
+parch -M "phrase" https://…                # capture with matches already marked
+parch ocr page.html                        # OCR the archive's images (charts, frozen
+                                           # canvases/iframes) into the text layer —
+                                           # needed only to mark text inside images
 parch mark "phrase" page.html              # → page.marked.html with matches highlighted,
                                            # including matches inside images (-grayscale)
 parch mark -c gold -c cyan foo bar p.html  # a color per phrase; --style underline|box|bold
-parch pdf "phrase" page.html               # → page.pdf: selectable text (incl. inside
-                                           # OCR'd images), highlights, attached text layer
+parch mark -f pdf "phrase" page.html       # → page.marked.pdf: selectable text (incl.
+                                           # inside OCR'd images), marks, attached layer
+parch mark -f png --dpr 0.4 "x" page.html   # …or any raster; --dpr resizes without reflowing
+parch render -f pdf --paper a4 page.html    # convert with no marking, no `ocr` needed
 cat page.html | parch find "phrase" -      # '-' pipes archives on stdin (find/text/lines/
-                                           # mark/pdf); '--' ends options ("-foo" is
+                                           # mark/render); '--' ends options ("-foo" is
                                            # searchable); parch help <cmd> for any of this
 ```
 
@@ -68,8 +71,8 @@ builds parch and narrates what it does.
 
 HTML archives embed a **text layer** ([TEXTLAYER.md](TEXTLAYER.md)): the
 page's rendered text with word-level coordinates, extracted at capture
-time. `parch text` reads it back (`-json` for the raw layer, with block
-structure and word geometry; `-blocks` for an NDJSON paragraph feed any
+time. `parch text` reads it back (`--json` for the raw layer, with block
+structure and word geometry; `--blocks` for an NDJSON paragraph feed any
 external indexer can ingest). `parch find` searches it Ctrl-F style —
 a query word matches anywhere inside a page word ("phone" finds iPhone),
 phrases match within one paragraph (never across), insensitive to case,
@@ -78,9 +81,9 @@ accents, punctuation, and typographic quotes; `*` bridges words
 that: `-e` regex, `-z N` fuzzy (finds what OCR *almost* read), `-w`
 whole words, `-s` case-sensitive, `-F` literal, `--in`/`--source`
 structural scoping — one matcher shared by `find`, `mark`, `pdf`, and
-capture-time `-highlight`, so a query that finds is a query that
-highlights. Hits come with pixel coordinates (`-json`) and grep-like
-exit codes for scripting. Disable at capture with `-text=false`.
+capture-time `-M`, so a query that finds is a query that
+highlights. Hits come with pixel coordinates (`--json`) and grep-like
+exit codes for scripting. Disable at capture with `--text=false`.
 
 Built on [pscription](https://github.com/goodblaster/pscription), which does the
 browser driving and page preparation; the capture backends (SingleFile
@@ -97,7 +100,7 @@ go install github.com/goodblaster/parchmint/cmd/parch@latest
 - **Chrome or Chromium**, installed separately — it is not bundled, and
   every capture drives a real browser. Nothing else is needed for
   capture, `text`, `lines`, `find`, `mark`, or `pdf`.
-- **An OCR engine, only for `parch index`.** Nothing to install on
+- **An OCR engine, only for `parch ocr`.** Nothing to install on
   macOS; a package elsewhere:
 
   | platform | engine | install |
@@ -106,16 +109,16 @@ go install github.com/goodblaster/parchmint/cmd/parch@latest
   | Linux | Tesseract | `apt install tesseract-ocr` |
   | Windows | Tesseract | `choco install tesseract` |
 
-  `parch index` picks the platform default; `-engine tesseract` forces it
+  `parch ocr` picks the platform default; `--engine tesseract` forces it
   anywhere. Non-English pages need that language's data too
-  (`tesseract-ocr-deu` for `-lang deu`, etc.). Everything else in the
+  (`tesseract-ocr-deu` for `--lang deu`, etc.). Everything else in the
   tool works with no OCR engine present — `index` is the only command
   that reads text out of images.
 
   **Windows could need no install either.** Windows ships
   `Windows.Media.Ocr`, which reports the word-level boxes the text layer
   wants and reads screen-rendered text well. `internal/ocr/windows` is
-  scaffolded for it — selectable as `-engine windows`, erroring until
+  scaffolded for it — selectable as `--engine windows`, erroring until
   someone implements it — and its package doc carries the API sketch, the
   build-tag layout to copy from `internal/ocr/apple`, the box
   normalization contract, and the open question to answer first (whether

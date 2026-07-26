@@ -29,7 +29,7 @@ func (JPEG) Action(snap *Snapshot) chromedp.ActionFunc {
 		if err := normalizeBackgroundAttachment(ctx); err != nil {
 			return err
 		}
-		buf, err := captureFullImage(ctx, page.CaptureScreenshotFormatJpeg, jpegQuality, jpegMaxDim)
+		buf, err := captureFullImage(ctx, page.CaptureScreenshotFormatJpeg, jpegQuality, jpegMaxDim, snap.DevicePixelRatio)
 		if err != nil {
 			return err
 		}

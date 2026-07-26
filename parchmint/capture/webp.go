@@ -32,7 +32,7 @@ func (WebP) Action(snap *Snapshot) chromedp.ActionFunc {
 		if err := normalizeBackgroundAttachment(ctx); err != nil {
 			return err
 		}
-		buf, err := captureFullImage(ctx, page.CaptureScreenshotFormatWebp, webpQuality, webpMaxDim)
+		buf, err := captureFullImage(ctx, page.CaptureScreenshotFormatWebp, webpQuality, webpMaxDim, snap.DevicePixelRatio)
 		if err != nil {
 			return err
 		}
