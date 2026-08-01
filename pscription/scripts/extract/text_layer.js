@@ -377,7 +377,7 @@ function extractTextLayer(cacheRuns) {
 
     if (!document.body) {
         return {
-            viewport: { width: window.innerWidth, dpr: window.devicePixelRatio || 1 },
+            viewport: { width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio || 1 },
             stats: stats,
             blocks: blocks,
             images: images,
@@ -414,7 +414,7 @@ function extractTextLayer(cacheRuns) {
     stats.pageSimilarity = similarity;
 
     return {
-        viewport: { width: window.innerWidth, dpr: window.devicePixelRatio || 1 },
+        viewport: { width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio || 1 },
         stats: stats,
         blocks: blocks,
         images: images,

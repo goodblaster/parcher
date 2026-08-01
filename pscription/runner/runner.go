@@ -7,6 +7,7 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/pscription/internal/config"
 )
 
 // Run loads a URL in a headless browser and executes actions with default configuration
@@ -57,9 +58,16 @@ func Start(ctx context.Context, url string, cfg Config) (*Session, error) {
 	if dpr <= 0 {
 		dpr = 1.0
 	}
+	// A zero height must NOT be passed through: Chrome then keeps its own
+	// default window height while honouring the width override, producing a
+	// viewport no real browser presents (see Config.ViewportHeight).
+	h := cfg.ViewportHeight
+	if h <= 0 {
+		h = config.ViewHeight
+	}
 	tasks := []chromedp.Action{
 		emulation.SetUserAgentOverride(cfg.UserAgent),
-		emulation.SetDeviceMetricsOverride(cfg.ViewportWidth, 0, dpr, false),
+		emulation.SetDeviceMetricsOverride(cfg.ViewportWidth, h, dpr, false),
 	}
 	tasks = append(tasks, cfg.PreNavigate...)
 	tasks = append(tasks,
