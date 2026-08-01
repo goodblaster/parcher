@@ -8,6 +8,7 @@ import (
 var (
 	MaxHeight   int64
 	ViewWidth   int64 = 1600
+	ViewHeight  int64 = 900
 	DataDir     string
 	ProfileJson bool
 )
@@ -20,6 +21,7 @@ func init() {
 
 func Init() {
 	ViewWidth = envToInt64("VIEW_WIDTH", ViewWidth)
+	ViewHeight = envToInt64("VIEW_HEIGHT", ViewHeight)
 	DataDir = os.Getenv("DATA_DIR")
 	MaxHeight = envToInt64("MAX_HEIGHT", 0) // 0 in unlimited
 	ProfileJson = envToBool("PROFILE_JSON", false)

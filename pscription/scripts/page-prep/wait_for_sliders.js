@@ -27,12 +27,20 @@ async function waitForSliders(maxMs) {
             `script[src*="${needle}" i], link[href*="${needle}" i]`);
 
     const libs = [
-        { name: 'slick', loaded: () => !!(window.jQuery && window.jQuery.fn && window.jQuery.fn.slick), ref: 'slick', marker: '.slick-initialized' },
-        { name: 'owl', loaded: () => !!(window.jQuery && window.jQuery.fn && window.jQuery.fn.owlCarousel), ref: 'owl.carousel', marker: '.owl-loaded' },
-        { name: 'swiper', loaded: () => !!window.Swiper, ref: 'swiper', marker: '.swiper-initialized' },
+        { name: 'slick', loaded: () => !!(window.jQuery && window.jQuery.fn && window.jQuery.fn.slick),
+          ref: 'slick', marker: '.slick-initialized', candidates: '[class*="slick-"]' },
+        { name: 'owl', loaded: () => !!(window.jQuery && window.jQuery.fn && window.jQuery.fn.owlCarousel),
+          ref: 'owl.carousel', marker: '.owl-loaded', candidates: '[class*="owl-"]' },
+        { name: 'swiper', loaded: () => !!window.Swiper,
+          ref: 'swiper', marker: '.swiper-initialized', candidates: '[class*="swiper"]' },
     ];
 
-    const expected = libs.filter((l) => l.loaded() || referenced(l.ref));
+    // Only wait for a library that has something to initialise. Plugin
+    // bundles ship carousel libraries unconditionally, and waiting on one
+    // with no elements burns the whole timeout for a marker that can never
+    // appear — measured at 8s per pass on a page with no carousel at all.
+    const expected = libs.filter((l) =>
+        (l.loaded() || referenced(l.ref)) && document.querySelector(l.candidates));
     if (expected.length === 0) {
         return { waited: false };
     }

@@ -17,6 +17,15 @@ type Config struct {
 	// it decides which responsive breakpoint the page renders at.
 	ViewportWidth int64
 
+	// ViewportHeight is the CSS-pixel viewport height. It is as load-bearing
+	// as the width: leaving it unset made Chrome keep its default window
+	// height while the width was overridden, so pages laid out in a slot
+	// like 1600x413 — an aspect ratio no responsive design anticipates, with
+	// 100vh collapsed to a third of a screen. Carousels that size themselves
+	// from the viewport, IntersectionObserver lazy-loading, and every 100vh
+	// hero all mis-render there. Zero means the configured default.
+	ViewportHeight int64
+
 	// DeviceScaleFactor is the device pixel ratio: how many output pixels
 	// each CSS pixel becomes. It is deliberately separate from
 	// ViewportWidth, because layout width and output resolution are
@@ -63,6 +72,7 @@ func DefaultConfig() Config {
 	return Config{
 		Timeout:           3000 * time.Second,
 		ViewportWidth:     config.ViewWidth,
+		ViewportHeight:    config.ViewHeight,
 		DeviceScaleFactor: 1.0,
 		UserAgent:         agents.Current,
 		WaitFor:           "body",
