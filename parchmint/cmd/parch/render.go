@@ -58,6 +58,7 @@ func runMarkOrRender(args []string, marking bool) {
 	format := fs.StringP("format", "f", "", "output format: html, pdf, png, jpeg, webp")
 	timeout := fs.Int("timeout", 120, "timeout in seconds")
 	width := fs.Int("width", 0, "re-render at this layout width in px, reflowing the archive (0 = the width it was captured at)")
+	height := fs.Int("height", 0, "re-render at this viewport height in px (0 = the height it was captured at)")
 	dpr := fs.Float64("dpr", 0, "device pixel ratio: output pixels per CSS pixel, e.g. 0.4 to shrink the output without reflowing (0 = 1)")
 	paper := fs.String("paper", "", "pdf sheet size, independent of -width: auto (default), letter, legal, tabloid, a3, a4, a5, inches (10.5), or WxH (8.5x11)")
 
@@ -183,12 +184,13 @@ func runMarkOrRender(args []string, marking bool) {
 	defer cancel()
 
 	opts := capture.RenderOptions{
-		Match:         matchOpts,
-		ViewportWidth: *width,
-		DPR:           *dpr,
-		Backend:       backend,
-		PaperWidthIn:  paperWidthIn,
-		PaperHeightIn: paperHeightIn,
+		Match:          matchOpts,
+		ViewportWidth:  *width,
+		ViewportHeight: *height,
+		DPR:            *dpr,
+		Backend:        backend,
+		PaperWidthIn:   paperWidthIn,
+		PaperHeightIn:  paperHeightIn,
 	}
 	if marking {
 		opts.Grayscale = *grayscale

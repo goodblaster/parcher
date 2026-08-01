@@ -47,6 +47,10 @@ type RenderOptions struct {
 	// its page-space boxes no longer match what was rendered.
 	ViewportWidth int
 
+	// ViewportHeight re-renders at this viewport height (0 = the height it
+	// was captured at, from the layer).
+	ViewportHeight int
+
 	// DPR is the device pixel ratio to render at (0 = 1.0). Independent of
 	// ViewportWidth: layout width picks the breakpoint, DPR picks the
 	// output resolution.
@@ -105,12 +109,19 @@ type RenderResult struct {
 // With no phrases every marking step is skipped and this is a pure format
 // conversion.
 func RenderArchive(ctx context.Context, cfg runner.Config, fileURL string, phrases []string, layer *textlayer.Layer, opts RenderOptions) (*RenderResult, error) {
-	// An explicit width wins; otherwise reproduce the capture geometry, so
-	// the default stays "render it the way it was captured".
+	// An explicit size wins; otherwise reproduce the capture geometry, so
+	// the default stays "render it the way it was captured". Height matters
+	// as much as width — re-rendering a 100vh hero in a different viewport
+	// height changes the layout just as surely as a breakpoint change.
 	if opts.ViewportWidth > 0 {
 		cfg.ViewportWidth = int64(opts.ViewportWidth)
 	} else if layer.Viewport.Width > 0 {
 		cfg.ViewportWidth = int64(layer.Viewport.Width)
+	}
+	if opts.ViewportHeight > 0 {
+		cfg.ViewportHeight = int64(opts.ViewportHeight)
+	} else if layer.Viewport.Height > 0 {
+		cfg.ViewportHeight = int64(layer.Viewport.Height)
 	}
 	if opts.DPR > 0 {
 		cfg.DeviceScaleFactor = opts.DPR

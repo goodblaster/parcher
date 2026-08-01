@@ -47,8 +47,9 @@ type Image struct {
 }
 
 type Viewport struct {
-	Width int     `json:"width"`
-	DPR   float64 `json:"dpr"`
+	Width  int     `json:"width"`
+	Height int     `json:"height,omitempty"`
+	DPR    float64 `json:"dpr"`
 }
 
 // Block is one paragraph-level unit: the phrase boundary for matching.
