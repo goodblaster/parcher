@@ -42,6 +42,7 @@ type Config struct {
 type Defaults struct {
 	Format  string `toml:"format"`
 	Width   int    `toml:"width"`
+	Height  int    `toml:"height"`
 	Paper   string `toml:"paper"`
 	Links   string `toml:"links"`
 	Timeout int    `toml:"timeout"`

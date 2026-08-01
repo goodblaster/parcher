@@ -87,6 +87,7 @@ func main() {
 		headful bool
 		timeout int
 		width   int
+		height  int
 		dpr     float64
 		paper   string
 		text    bool
@@ -119,6 +120,7 @@ func main() {
 	flag.IntVar(&timeout, "timeout", defTimeout, "timeout in seconds")
 	var highlight stringsFlag
 	flag.IntVar(&width, "width", 0, "viewport/layout width in px — picks the responsive breakpoint (0 = default 1600)")
+	flag.IntVar(&height, "height", 0, "viewport height in px (0 = default 900); pages laid out in an unrealistically short viewport mis-render")
 	flag.Float64Var(&dpr, "dpr", 0, "device pixel ratio: output pixels per CSS pixel, e.g. 2 for retina rasters (0 = 1)")
 	flag.StringVar(&paper, "paper", "", "pdf sheet size, independent of -width: auto (default, sheet follows the layout), letter, legal, tabloid, a3, a4, a5, inches (10.5), or WxH (8.5x11)")
 	flag.BoolVar(&text, "text", true, "embed the text layer in HTML archives (read back with 'parch text <file>')")
@@ -164,6 +166,7 @@ func main() {
 	cache = pickStr(set, "cache", cache, cfg.CacheDir, "")
 	timeout = pickInt(set, "timeout", timeout, cfg.Defaults.Timeout, defTimeout)
 	width = pickInt(set, "width", width, cfg.Defaults.Width, 0)
+	height = pickInt(set, "height", height, cfg.Defaults.Height, 0)
 	paper = pickStr(set, "paper", paper, cfg.Defaults.Paper, "")
 	favicon = pickBool(set, "favicon", favicon, cfg.Defaults.Favicon, true)
 
@@ -216,6 +219,9 @@ func main() {
 	runCfg.Headful = headful
 	if width > 0 {
 		runCfg.ViewportWidth = int64(width)
+	}
+	if height > 0 {
+		runCfg.ViewportHeight = int64(height)
 	}
 	if dpr > 0 {
 		runCfg.DeviceScaleFactor = dpr
