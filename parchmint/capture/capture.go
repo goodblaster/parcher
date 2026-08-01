@@ -122,25 +122,42 @@ func CaptureWithConfig(ctx context.Context, url string, cfg runner.Config, recip
 func CaptureWithOptions(ctx context.Context, url string, cfg runner.Config, recipe pipeline.Recipe, backend Backend, opts Options) (*Snapshot, error) {
 	cfg.PreNavigate = append(cfg.PreNavigate, recipe.PreNavigateActions(url)...)
 
+	// Retrying is only justified while the evidence keeps changing. The
+	// defect this guards against is intermittent by nature, so a second
+	// attempt that measures EXACTLY what the first one did is not going to
+	// come out differently — it just costs another full pass. Bail on a
+	// repeat rather than burning the whole attempt budget.
+	var lastSig string
 	for attempt := 1; ; attempt++ {
-		snap, defect, err := captureOnce(ctx, url, cfg, recipe, backend, opts, attempt < maxCaptureAttempts)
+		snap, sig, defect, err := captureOnce(ctx, url, cfg, recipe, backend, opts, attempt < maxCaptureAttempts)
 		if err != nil {
 			return nil, errors.Wrapf(err, "%s capture failed", backend.Name())
 		}
 		if !defect {
 			return snap, nil
 		}
-		log.With("attempt", attempt).With("url", url).Warn("layout defect detected (slider not initialized); retrying capture")
+		if sig != "" && sig == lastSig {
+			log.With("attempt", attempt).With("url", url).With("evidence", sig).
+				Warn("layout defect unchanged since the last attempt; not transient, capturing as-is")
+			snap, _, _, err = captureOnce(ctx, url, cfg, recipe, backend, opts, false)
+			if err != nil {
+				return nil, errors.Wrapf(err, "%s capture failed", backend.Name())
+			}
+			return snap, nil
+		}
+		lastSig = sig
+		log.With("attempt", attempt).With("url", url).With("evidence", sig).
+			Warn("layout defect detected (slider not initialized); retrying capture")
 	}
 }
 
 // captureOnce runs one prepare+capture pass. When retryable is true it checks
 // for a layout defect BEFORE serializing (so a doomed attempt doesn't waste
 // backend work) and, if found, returns defect=true with no snapshot.
-func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipeline.Recipe, backend Backend, opts Options, retryable bool) (snap *Snapshot, defect bool, err error) {
+func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipeline.Recipe, backend Backend, opts Options, retryable bool) (snap *Snapshot, signature string, defect bool, err error) {
 	session, err := runner.Start(ctx, url, cfg)
 	if err != nil {
-		return nil, false, err
+		return nil, signature, false, err
 	}
 	defer session.Close()
 
@@ -152,11 +169,11 @@ func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipe
 		PaperHeightIn:    opts.PaperHeightIn,
 	}
 	if err := session.Run(recipe.Action(), captureTitle(&snap.Title)); err != nil {
-		return nil, false, err
+		return nil, signature, false, err
 	}
 
 	if retryable {
-		_ = session.Run(detectDefect(&defect))
+		_ = session.Run(detectDefect(&defect, &signature))
 		if defect {
 			// Cheap in-session recovery before escalating to a full
 			// re-capture: sliders reliably initialize given the time the
@@ -165,10 +182,10 @@ func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipe
 			// A full retry (fresh navigation) only happens if that fails.
 			log.With("url", url).Debug("slider not yet initialized; recovering in-session")
 			_ = session.Run(js.WaitForSliders.Action(nil, 5000))
-			_ = session.Run(detectDefect(&defect))
+			_ = session.Run(detectDefect(&defect, &signature))
 		}
 		if defect {
-			return nil, true, nil
+			return nil, signature, true, nil
 		}
 	}
 
@@ -219,20 +236,26 @@ func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipe
 	}
 
 	if err := session.Run(backend.Action(snap)); err != nil {
-		return nil, false, err
+		return nil, signature, false, err
 	}
-	return snap, false, nil
+	return snap, signature, false, nil
 }
 
-func detectDefect(defect *bool) chromedp.ActionFunc {
+// detectDefect reports whether the prepared page is in a known-broken layout
+// state, along with the SIGNATURE of the evidence behind that verdict — see
+// the retry loop in Capture for why the evidence, not just the verdict,
+// decides whether another attempt is worth paying for.
+func detectDefect(defect *bool, signature *string) chromedp.ActionFunc {
 	return func(ctx context.Context) error {
 		var res struct {
-			Defect bool `json:"defect"`
+			Defect    bool   `json:"defect"`
+			Signature string `json:"signature"`
 		}
 		if err := js.DetectSliderDefect.Action(&res)(ctx); err != nil {
 			return err
 		}
 		*defect = res.Defect
+		*signature = res.Signature
 		return nil
 	}
 }
