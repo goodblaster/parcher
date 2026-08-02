@@ -31,18 +31,43 @@ import (
 // CSSOM rules, and fonts for real, while this path rewrites references
 // lexically. Prefer it for a straight container change, and the browser for
 // anything that needs the page rendered.
-func convertOffline(ctx context.Context, srcData []byte, path, sourceURL, format string, isMHT bool, warn func(string)) (*capture.RenderResult, error) {
-	switch format {
+// The fields travel together as a struct rather than as seven positional
+// arguments, two of them adjacent booleans that would transpose silently.
+type offlineRequest struct {
+	// source is the archive's bytes, and path where they were read from.
+	source []byte
+	path   string
+
+	// sourceURL is the address the archive records, used to name what the
+	// conversion produces.
+	sourceURL string
+
+	// format is the target container: "html" or "mht".
+	format string
+
+	// isMHT reports the source container.
+	isMHT bool
+
+	// network allows downloading the http(s) resources the page still points
+	// at, instead of leaving them as live references (--fetch).
+	network bool
+
+	// warn reports references that could not be included.
+	warn func(string)
+}
+
+func convertOffline(ctx context.Context, req offlineRequest) (*capture.RenderResult, error) {
+	switch req.format {
 	case "html":
-		if !isMHT {
-			return nil, fmt.Errorf("--no-browser -f html: %s is already HTML; there is nothing to convert", filepath.Base(path))
+		if !req.isMHT {
+			return nil, fmt.Errorf("--no-browser -f html: %s is already HTML; there is nothing to convert", filepath.Base(req.path))
 		}
 
-		doc, err := documents.Parse(bytes.NewReader(srcData))
+		doc, err := documents.Parse(bytes.NewReader(req.source))
 		if err != nil {
 			return nil, fmt.Errorf("parse mht: %w", err)
 		}
-		out, err := render.Document(doc, render.Options{OnWarn: warn})
+		out, err := render.Document(doc, render.Options{OnWarn: req.warn})
 		if err != nil {
 			return nil, err
 		}
@@ -50,13 +75,15 @@ func convertOffline(ctx context.Context, srcData []byte, path, sourceURL, format
 		return &capture.RenderResult{Bytes: out, MIME: "text/html"}, nil
 
 	case "mht":
-		// An archive is self-contained, so packing it needs no network —
-		// and reaching out to one during a local format change would be a
-		// surprise. Anything still pointing at the network is reported and
-		// left as a plain reference.
-		doc, err := pack.HTML(ctx, srcData, pack.Options{
-			Base:   packBase(path, sourceURL),
-			OnWarn: warn,
+		// Packing reads what is on disk. A page saved by a browser can still
+		// point at the network for resources it never wrote out, and those
+		// are left as live references unless --fetch says to go and get them
+		// — a local format change should not reach for the network on its
+		// own. Whatever is still missing is reported either way.
+		doc, err := pack.HTML(ctx, req.source, pack.Options{
+			Base:    packBase(req.path, req.sourceURL),
+			Network: req.network,
+			OnWarn:  req.warn,
 		})
 		if err != nil {
 			return nil, err
@@ -70,7 +97,7 @@ func convertOffline(ctx context.Context, srcData []byte, path, sourceURL, format
 		return &capture.RenderResult{Bytes: buf.Bytes(), MIME: "multipart/related"}, nil
 	}
 
-	return nil, fmt.Errorf("--no-browser converts between html and mht only, not %q — drop --no-browser to render one", format)
+	return nil, fmt.Errorf("--no-browser converts between html and mht only, not %q — drop --no-browser to render one", req.format)
 }
 
 // packBase picks what relative references resolve against — which has to be

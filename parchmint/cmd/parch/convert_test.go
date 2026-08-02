@@ -2,6 +2,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -154,5 +159,54 @@ func TestRekeySkipsSelfContainedArchives(t *testing.T) {
 	withSidecars := append(selfContained, "\r\nContent-Location: file:///tmp/d/a/x.css\r\n"...)
 	if got := rekeyFileBase(withSidecars, "file:///tmp/d/", "https://ex.com/"); bytes.Equal(got, withSidecars) {
 		t.Error("archive with file: subresources was not re-keyed")
+	}
+}
+
+// --fetch is what lets the offline path go and get the resources a saved page
+// still points at over the network. Without it those stay live references, so
+// a local format change never reaches for the network on its own.
+func TestConvertOfflineFetch(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "image/png")
+		w.Write([]byte("PNGDATA"))
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	page := filepath.Join(dir, "page.html")
+	source := []byte(`<img src="` + server.URL + `/remote.png">`)
+	if err := os.WriteFile(page, source, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	convert := func(network bool) string {
+		t.Helper()
+		res, err := convertOffline(t.Context(), offlineRequest{
+			source:  source,
+			path:    page,
+			format:  "mht",
+			network: network,
+			warn:    func(string) {},
+		})
+		if err != nil {
+			t.Fatalf("convertOffline(network=%v): %v", network, err)
+		}
+		return string(res.Bytes)
+	}
+
+	if got := convert(false); strings.Contains(got, "PNGDATA") {
+		t.Error("resource was fetched without --fetch")
+	}
+	if requests != 0 {
+		t.Errorf("made %d requests without --fetch, want 0", requests)
+	}
+
+	if got := convert(true); !strings.Contains(got, base64.StdEncoding.EncodeToString([]byte("PNGDATA"))) {
+		t.Errorf("resource was not embedded with --fetch:\n%s", got)
+	}
+	if requests != 1 {
+		t.Errorf("made %d requests with --fetch, want 1", requests)
 	}
 }

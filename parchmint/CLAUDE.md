@@ -53,6 +53,8 @@ go build -o bin/ ./cmd/...
 ./bin/parch render -f html page.mht               # ways; the text layer travels with the document
 ./bin/parch render -f mht --no-browser page.html  # …by rewriting the bytes: no Chrome, no reflow,
                                                   # no network (html<->mht only)
+./bin/parch render -f mht --no-browser --fetch \
+                          saved-page.html         # …and download what the page still points at
 ./bin/parch mark phone page.html --width 800      # flags may follow positionals (pflag)
 ```
 
@@ -66,7 +68,7 @@ go build -o bin/ ./cmd/...
 
 **That address is provenance, never a resolution base.** `packBase` resolves relative references against the archive's own path on disk, because a browser-saved page keeps its resources in a sibling `_files/` directory that only the file path reaches. Resolving against the recorded URL instead sends every sidecar reference at the network: measured, a 50MB saved page packed to 1.2MB of nothing.
 
-**Container conversion** (`-f html` ↔ `-f mht`) goes through the browser like every other format, so it reuses `capture.MHT{}` and the document-serialization path. Two things are load-bearing: the **text layer lives in the container**, not the document — a MIME part in an .mht, a `<script>` in HTML — so a conversion must re-embed it or `parch text`/`find`/`mark` silently stop working on the result (cmd/parch/render.go does this, guarded by `textlayer.HasLayer`); and `Snapshot.FromArchive` tells backends to skip capture-time resource repair, because `RenderArchive` disables page scripts and the MHT backend's font extraction runs a `FontFaceSet` callback that then fails with "no longer runnable". `-f mht` on an .mht source is refused: the default path keeps the original container, and every part with it. `--no-browser` converts by rewriting bytes instead (`internal/convert`), which skips the reflow — it cannot render other formats, so `--width/--height/--dpr/--paper` are refused alongside it.
+**Container conversion** (`-f html` ↔ `-f mht`) goes through the browser like every other format, so it reuses `capture.MHT{}` and the document-serialization path. Two things are load-bearing: the **text layer lives in the container**, not the document — a MIME part in an .mht, a `<script>` in HTML — so a conversion must re-embed it or `parch text`/`find`/`mark` silently stop working on the result (cmd/parch/render.go does this, guarded by `textlayer.HasLayer`); and `Snapshot.FromArchive` tells backends to skip capture-time resource repair, because `RenderArchive` disables page scripts and the MHT backend's font extraction runs a `FontFaceSet` callback that then fails with "no longer runnable". `-f mht` on an .mht source is refused: the default path keeps the original container, and every part with it. `--no-browser` converts by rewriting bytes instead (`internal/convert`), which skips the reflow — it cannot render other formats, so `--width/--height/--dpr/--paper` are refused alongside it. It packs what is on disk: a browser-saved page can still point at the network for resources it never wrote out (measured: 80 of them on a saved test-site-3), and `--fetch` downloads those. Off by default, because a local format change should not reach for the network on its own; refused without `--no-browser`, where the browser fetches anyway.
 
 Config file precedence: CLI flags → `./.parch/config` (nearest ancestor) → `~/.parch/config` → defaults. Logs → stderr; content → stdout when piped.
 

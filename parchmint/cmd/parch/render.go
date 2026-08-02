@@ -58,9 +58,10 @@ func runMarkOrRender(args []string, marking bool) {
 
 	// Conversion between the two document containers can also be done by
 	// rewriting the archive's bytes, with no browser at all.
-	var noBrowser *bool
+	var noBrowser, fetchRemote *bool
 	if !marking {
-		noBrowser = fs.Bool("no-browser", false, "convert html<->mht by rewriting the archive instead of re-rendering it: no Chrome, no reflow, no network (html and mht only)")
+		noBrowser = fs.Bool("no-browser", false, "convert html<->mht by rewriting the archive instead of re-rendering it: no Chrome, no reflow (html and mht only)")
+		fetchRemote = fs.Bool("fetch", false, "with --no-browser, download the http(s) resources the page still points at; without it they stay live references")
 	}
 	width := fs.Int("width", 0, "re-render at this layout width in px, reflowing the archive (0 = the width it was captured at)")
 	height := fs.Int("height", 0, "re-render at this viewport height in px (0 = the height it was captured at)")
@@ -104,9 +105,12 @@ func runMarkOrRender(args []string, marking bool) {
 			fmt.Fprintln(os.Stderr, "embedded text layer travels with the document either way. --no-browser")
 			fmt.Fprintln(os.Stderr, "does that conversion by rewriting the bytes: no Chrome, and the page")
 			fmt.Fprintln(os.Stderr, "keeps the exact layout it was captured at rather than being re-rendered.")
+			fmt.Fprintln(os.Stderr, "\nIt packs what is on disk. A page saved by a browser may still point at")
+			fmt.Fprintln(os.Stderr, "the network for resources it never wrote out; --fetch downloads those.")
 			fmt.Fprintln(os.Stderr, "\nExample: parch render -f pdf --paper a4 report.html")
 			fmt.Fprintln(os.Stderr, "         parch render -f png --dpr 0.5 test-site-1.html")
 			fmt.Fprintln(os.Stderr, "         parch render -f mht --no-browser test-site-1.html")
+			fmt.Fprintln(os.Stderr, "         parch render -f mht --no-browser --fetch saved-page.html")
 		}
 		fmt.Fprintln(os.Stderr, "\n'-' as the archive reads it from stdin (output then defaults to stdout).")
 		fmt.Fprintln(os.Stderr, "\n-width RE-LAYS OUT the page at that width (a different responsive")
@@ -200,6 +204,13 @@ func runMarkOrRender(args []string, marking bool) {
 
 	var res *capture.RenderResult
 
+	// The browser path already loads the page with network access, so --fetch
+	// there describes something that always happens. Refuse it rather than
+	// let it read as a no-op.
+	if fetchRemote != nil && *fetchRemote && !*noBrowser {
+		die(fmt.Errorf("--fetch applies to --no-browser; without it the page is loaded in a browser, which fetches what it references anyway"))
+	}
+
 	if noBrowser != nil && *noBrowser {
 		// Re-rendering flags describe a browser laying the page out again;
 		// this path never does, so honour them by refusing rather than
@@ -214,7 +225,16 @@ func runMarkOrRender(args []string, marking bool) {
 			// what this path skips.
 			fmt.Fprintf(os.Stderr, "parch: %s has no text layer, and --no-browser cannot index one; converting without it (drop --no-browser to index)\n", srcName)
 		}
-		if res, err = convertOffline(ctx, srcData, path, sourceURL, *format, isMHT, convertWarner(false)); err != nil {
+		res, err = convertOffline(ctx, offlineRequest{
+			source:    srcData,
+			path:      path,
+			sourceURL: sourceURL,
+			format:    *format,
+			isMHT:     isMHT,
+			network:   fetchRemote != nil && *fetchRemote,
+			warn:      convertWarner(false),
+		})
+		if err != nil {
 			die(err)
 		}
 	} else {
