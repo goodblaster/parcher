@@ -33,18 +33,16 @@ func resolveFormat(format string, marking bool) (capture.Backend, string, error)
 	switch format {
 	case "":
 		if !marking {
-			return nil, "", fmt.Errorf("render needs -f (html, pdf, png, jpeg, or webp)")
+			return nil, "", fmt.Errorf("render needs -f (html, mht, pdf, png, jpeg, or webp)")
 		}
 		return nil, prefix + ".html", nil // container fixed up later for MHT
 	case "html":
 		return nil, prefix + ".html", nil
-	case "pdf", "png", "jpeg", "jpg", "webp":
+	case "mht", "pdf", "png", "jpeg", "jpg", "webp":
 		b := backendFor(format)
 		return b, prefix + b.Ext(), nil
-	case "mht":
-		return nil, "", fmt.Errorf("-f mht: an .mht archive already keeps its format; drop -f")
 	}
-	return nil, "", fmt.Errorf("unknown format %q (want html, pdf, png, jpeg, or webp)", format)
+	return nil, "", fmt.Errorf("unknown format %q (want html, mht, pdf, png, jpeg, or webp)", format)
 }
 
 func runMarkOrRender(args []string, marking bool) {
@@ -55,8 +53,16 @@ func runMarkOrRender(args []string, marking bool) {
 	fs := flag.NewFlagSet(verb, flag.ExitOnError)
 
 	output := fs.StringP("output", "o", "", "output file ('-' for stdout)")
-	format := fs.StringP("format", "f", "", "output format: html, pdf, png, jpeg, webp")
+	format := fs.StringP("format", "f", "", "output format: html, mht, pdf, png, jpeg, webp")
 	timeout := fs.Int("timeout", 120, "timeout in seconds")
+
+	// Conversion between the two document containers can also be done by
+	// rewriting the archive's bytes, with no browser at all.
+	var noBrowser, fetchRemote *bool
+	if !marking {
+		noBrowser = fs.Bool("no-browser", false, "convert html<->mht by rewriting the archive instead of re-rendering it: no Chrome, no reflow (html and mht only)")
+		fetchRemote = fs.Bool("fetch", false, "with --no-browser, download the http(s) resources the page still points at; without it they stay live references")
+	}
 	width := fs.Int("width", 0, "re-render at this layout width in px, reflowing the archive (0 = the width it was captured at)")
 	height := fs.Int("height", 0, "re-render at this viewport height in px (0 = the height it was captured at)")
 	dpr := fs.Float64("dpr", 0, "device pixel ratio: output pixels per CSS pixel, e.g. 0.4 to shrink the output without reflowing (0 = 1)")
@@ -95,8 +101,16 @@ func runMarkOrRender(args []string, marking bool) {
 			fmt.Fprintln(os.Stderr, "\nA PDF still gets everything that makes it searchable: native selectable")
 			fmt.Fprintln(os.Stderr, "text, invisible overlay text for any image words `parch ocr` found, and")
 			fmt.Fprintln(os.Stderr, "the text layer attached.")
+			fmt.Fprintln(os.Stderr, "\n-f html and -f mht convert between the two archive containers; the")
+			fmt.Fprintln(os.Stderr, "embedded text layer travels with the document either way. --no-browser")
+			fmt.Fprintln(os.Stderr, "does that conversion by rewriting the bytes: no Chrome, and the page")
+			fmt.Fprintln(os.Stderr, "keeps the exact layout it was captured at rather than being re-rendered.")
+			fmt.Fprintln(os.Stderr, "\nIt packs what is on disk. A page saved by a browser may still point at")
+			fmt.Fprintln(os.Stderr, "the network for resources it never wrote out; --fetch downloads those.")
 			fmt.Fprintln(os.Stderr, "\nExample: parch render -f pdf --paper a4 report.html")
 			fmt.Fprintln(os.Stderr, "         parch render -f png --dpr 0.5 test-site-1.html")
+			fmt.Fprintln(os.Stderr, "         parch render -f mht --no-browser test-site-1.html")
+			fmt.Fprintln(os.Stderr, "         parch render -f mht --no-browser --fetch saved-page.html")
 		}
 		fmt.Fprintln(os.Stderr, "\n'-' as the archive reads it from stdin (output then defaults to stdout).")
 		fmt.Fprintln(os.Stderr, "\n-width RE-LAYS OUT the page at that width (a different responsive")
@@ -159,53 +173,113 @@ func runMarkOrRender(args []string, marking bool) {
 	if err != nil {
 		die(err)
 	}
+	// A missing layer is not a reason to refuse the work. Plenty of HTML is
+	// not a parch archive — a page saved by the browser, or one captured
+	// with --text=false — and it converts perfectly well. Index it during
+	// the render instead, so what comes out IS a proper archive.
 	layer, err := textlayer.FromBytes(srcData, srcName)
-	if err != nil {
-		die(err)
+	reindex := err != nil
+	if reindex {
+		layer = &textlayer.Layer{}
 	}
+
+	// A freshly indexed layer still wants the page's real address. Browsers
+	// record it in the file when they save a page; failing that, the layer
+	// (if any) knows it.
+	sourceURL := layer.URL
+	if sourceURL == "" {
+		sourceURL = savedFromURL(srcData)
+	}
+
 	if textlayer.IsPDF(srcData) {
 		die(fmt.Errorf("%s: a .pdf cannot be re-rendered — its images are XObjects, not data URIs; %s the source .html/.mht instead", srcName, verb))
 	}
 	isMHT := textlayer.IsMHT(srcData)
-
-	// The browser loads the archive over file://; a stdin archive is
-	// spilled to a temp file first (removed after the session ends).
-	var abs, tmp string
-	if path == stdinName {
-		if tmp, err = spillArchive(srcData); err != nil {
-			die(err)
-		}
-		abs = tmp
-	} else if abs, err = filepath.Abs(path); err != nil {
-		die(err)
+	if isMHT && *format == "mht" {
+		die(fmt.Errorf("-f mht: the source is already an .mht; drop -f to keep its own container, which preserves every part (and so every cid: reference) instead of re-snapshotting it"))
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeout)*time.Second)
 	defer cancel()
 
-	opts := capture.RenderOptions{
-		Match:          matchOpts,
-		ViewportWidth:  *width,
-		ViewportHeight: *height,
-		DPR:            *dpr,
-		Backend:        backend,
-		PaperWidthIn:   paperWidthIn,
-		PaperHeightIn:  paperHeightIn,
-	}
-	if marking {
-		opts.Grayscale = *grayscale
-		opts.Color = "rgba(255, 220, 0, 0.5)" // default image fill; -c overrides per phrase
-		opts.Stroke = "rgba(200, 160, 0, 0.9)"
-		opts.Colors = termColors
-		opts.Style = *style
+	var res *capture.RenderResult
+
+	// The browser path already loads the page with network access, so --fetch
+	// there describes something that always happens. Refuse it rather than
+	// let it read as a no-op.
+	if fetchRemote != nil && *fetchRemote && !*noBrowser {
+		die(fmt.Errorf("--fetch applies to --no-browser; without it the page is loaded in a browser, which fetches what it references anyway"))
 	}
 
-	res, err := capture.RenderArchive(ctx, runner.DefaultConfig(), "file://"+abs, phrases, layer, opts)
-	if tmp != "" {
-		os.Remove(tmp) // session is over; the spilled stdin copy is done
-	}
-	if err != nil {
-		die(err)
+	if noBrowser != nil && *noBrowser {
+		// Re-rendering flags describe a browser laying the page out again;
+		// this path never does, so honour them by refusing rather than
+		// ignoring them.
+		for _, given := range []string{"width", "height", "dpr", "paper"} {
+			if fs.Changed(given) {
+				die(fmt.Errorf("--%s re-renders the page, which --no-browser does not do; drop one of them", given))
+			}
+		}
+		if reindex {
+			// Indexing means reading the rendered page, which is exactly
+			// what this path skips.
+			fmt.Fprintf(os.Stderr, "parch: %s has no text layer, and --no-browser cannot index one; converting without it (drop --no-browser to index)\n", srcName)
+		}
+		res, err = convertOffline(ctx, offlineRequest{
+			source:    srcData,
+			path:      path,
+			sourceURL: sourceURL,
+			format:    *format,
+			isMHT:     isMHT,
+			network:   fetchRemote != nil && *fetchRemote,
+			warn:      convertWarner(false),
+		})
+		if err != nil {
+			die(err)
+		}
+	} else {
+		// The browser loads the archive over file://; a stdin archive is
+		// spilled to a temp file first (removed after the session ends).
+		var abs, tmp string
+		if path == stdinName {
+			if tmp, err = spillArchive(srcData); err != nil {
+				die(err)
+			}
+			abs = tmp
+		} else if abs, err = filepath.Abs(path); err != nil {
+			die(err)
+		}
+
+		if reindex {
+			fmt.Fprintf(os.Stderr, "parch: %s has no text layer; indexing it during the conversion\n", srcName)
+		}
+
+		opts := capture.RenderOptions{
+			Match:          matchOpts,
+			ViewportWidth:  *width,
+			ViewportHeight: *height,
+			DPR:            *dpr,
+			Backend:        backend,
+			PaperWidthIn:   paperWidthIn,
+			PaperHeightIn:  paperHeightIn,
+			ExtractLayer:   reindex,
+			SourceURL:      sourceURL,
+		}
+		if marking {
+			opts.Grayscale = *grayscale
+			opts.Color = "rgba(255, 220, 0, 0.5)" // default image fill; -c overrides per phrase
+			opts.Stroke = "rgba(200, 160, 0, 0.9)"
+			opts.Colors = termColors
+			opts.Style = *style
+		}
+
+		res, err = capture.RenderArchive(ctx, runner.DefaultConfig(), "file://"+abs, phrases, layer, opts)
+		if tmp != "" {
+			os.Remove(tmp) // session is over; the spilled stdin copy is done
+		}
+		if err != nil {
+			die(err)
+		}
 	}
 
 	if marking && res.DOMMatches+res.OCRMatches == 0 {
@@ -225,6 +299,52 @@ func runMarkOrRender(args []string, marking bool) {
 		ext = ".marked.mht"
 		if !marking {
 			ext = ".mht"
+		}
+	}
+
+	// Converting between containers moves the text layer with it: an .mht
+	// keeps it in a MIME part, an .html in a <script> element. Carry it
+	// across, or `parch text`/`find`/`mark` stop working on the result —
+	// an .mht rendered to .html used to lose it silently.
+	//
+	// Outputs that already carry a layer are left alone: an HTML source's
+	// script element survives serialization, and the MHT container path
+	// above keeps every part. So are the formats with no layer of their
+	// own — PDF gets its attachment inside RenderArchive, rasters have none.
+	// An MHT built from a page on disk names its parts by file: URL, which
+	// Chrome's MHTML loader refuses to resolve — the archive would open as
+	// unstyled markup with every resource present but unbound. Re-key it onto
+	// the address the page came from. Both conversion paths need this: the
+	// browser one because Chrome names the parts, the offline one because it
+	// resolves them from the filesystem.
+	if _, toMHT := backend.(capture.MHT); toMHT {
+		fileBase, declaredBase := archiveBases(path, sourceURL)
+		out = rekeyFileBase(out, fileBase, declaredBase)
+	}
+
+	// The layer to write is the one just indexed, when the source had none,
+	// otherwise the source's own. A reindex that failed leaves nothing to
+	// write — better an archive with no layer than one with an empty layer.
+	layerJSON := res.TextLayer
+	if layerJSON == nil && !reindex {
+		if marshaled, err := layer.Marshal(); err != nil {
+			fmt.Fprintln(os.Stderr, "parch: could not carry the text layer across: "+err.Error())
+		} else {
+			layerJSON = marshaled
+		}
+	}
+
+	if layerJSON != nil && !textlayer.HasLayer(out) {
+		switch backend.(type) {
+		case nil: // the HTML document path
+			out = textlayer.EmbedInHTML(out, layerJSON)
+		case capture.MHT:
+			embedded, err := textlayer.EmbedInMHT(out, layerJSON)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "parch: could not carry the text layer into the .mht: "+err.Error())
+			} else {
+				out = embedded
+			}
 		}
 	}
 

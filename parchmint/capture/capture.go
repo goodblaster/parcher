@@ -55,6 +55,13 @@ type Snapshot struct {
 	// backend embeds it. Nil when extraction was off or failed.
 	TextLayer []byte
 
+	// FromArchive marks a snapshot taken by RenderArchive — a conversion of
+	// an existing archive rather than a capture of a live page. Backends use
+	// it to skip capture-time resource repairs: an archive already has its
+	// subresources inlined, and RenderArchive disables page scripts, so
+	// steps that run JS in the page cannot work there.
+	FromArchive bool
+
 	// favicons are the page's icons, fetched and inlined as data URIs when
 	// Options.Favicon is set. The HTML and MHT backends write them into the
 	// serialized document (embedFaviconsInHTML); the live DOM is left
