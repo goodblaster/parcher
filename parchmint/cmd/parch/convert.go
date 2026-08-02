@@ -81,9 +81,10 @@ func convertOffline(ctx context.Context, req offlineRequest) (*capture.RenderRes
 		// — a local format change should not reach for the network on its
 		// own. Whatever is still missing is reported either way.
 		doc, err := pack.HTML(ctx, req.source, pack.Options{
-			Base:    packBase(req.path, req.sourceURL),
-			Network: req.network,
-			OnWarn:  req.warn,
+			Base:         packBase(req.path, req.sourceURL),
+			FallbackBase: fallbackBase(req.path, req.sourceURL),
+			Network:      req.network,
+			OnWarn:       req.warn,
 		})
 		if err != nil {
 			return nil, err
@@ -119,6 +120,38 @@ func packBase(path, sourceURL string) string {
 	// recorded address is the only base on offer. Archives arriving that way
 	// are self-contained anyway, with nothing relative left to resolve.
 	return sourceURL
+}
+
+// fallbackBase is the page's own address standing where the file on disk
+// stands, so a reference can be resolved a second way when the filesystem has
+// nothing at the first.
+//
+// A saved page can reference a resource that escapes the directory it was
+// saved into — `../../content/dam/x.svg` — which against the file on disk
+// lands somewhere no browser ever wrote. Resolved against the page's real
+// address it lands where the resource actually is. It is also the name that
+// reference will resolve to once the archive is re-keyed, so the part comes
+// out correctly named for free.
+//
+// Empty when the archive records no address of its own: there is then nothing
+// to fall back to, and inventing one would just fire requests at a host that
+// does not exist.
+func fallbackBase(path, sourceURL string) string {
+	if sourceURL == "" {
+		return ""
+	}
+
+	fileBase, declaredBase := archiveBases(path, sourceURL)
+	if fileBase == "" || declaredBase == "" {
+		return ""
+	}
+
+	base := packBase(path, sourceURL)
+	if !strings.HasPrefix(base, fileBase) {
+		return ""
+	}
+
+	return declaredBase + strings.TrimPrefix(base, fileBase)
 }
 
 // rekeyFileBase re-names an MHT's parts from a file: base onto a

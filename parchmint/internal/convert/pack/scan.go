@@ -2,7 +2,6 @@ package pack
 
 import (
 	"io"
-	"net/url"
 	"strings"
 
 	"github.com/goodblaster/errors"
@@ -15,10 +14,10 @@ import (
 // rewriting the inline data: URIs into cid: references. The returned markup
 // is otherwise byte-for-byte the input: only the elements that changed are
 // re-serialized.
-func (p *packer) scanHTML(source string, base *url.URL) (string, []*url.URL) {
+func (p *packer) scanHTML(source string, base target) (string, []target) {
 	var (
 		out     strings.Builder
-		pending []*url.URL
+		pending []target
 		inStyle bool
 		inTitle bool
 	)
@@ -60,9 +59,15 @@ func (p *packer) scanHTML(source string, base *url.URL) (string, []*url.URL) {
 			case "title":
 				inTitle = true
 			case "base":
+				// A <base href> moves the ground both resolutions stand on.
 				if href, ok := attr(token, "href"); ok {
-					if resolved := resolve(href, base); resolved != nil {
-						base = resolved
+					if resolved := resolve(href, base.url); resolved != nil {
+						base.url = resolved
+					}
+					if base.fallback != nil {
+						if resolved := resolve(href, base.fallback); resolved != nil {
+							base.fallback = resolved
+						}
 					}
 				}
 			}
@@ -92,8 +97,8 @@ func (p *packer) scanHTML(source string, base *url.URL) (string, []*url.URL) {
 // scanCSS collects the references in a stylesheet, rewriting only its inline
 // data: URIs. Ordinary references stay as written: the stylesheet becomes a
 // part at its own URL, so they keep resolving.
-func (p *packer) scanCSS(source string, base *url.URL) (string, []*url.URL) {
-	var pending []*url.URL
+func (p *packer) scanCSS(source string, base target) (string, []target) {
+	var pending []target
 
 	rewritten := css.Rewrite(source, func(ref string) string {
 		return p.reference(ref, base, &pending)
@@ -104,7 +109,7 @@ func (p *packer) scanCSS(source string, base *url.URL) (string, []*url.URL) {
 
 // rewriteAttrs handles every subresource attribute on token, reporting
 // whether any of their values changed.
-func (p *packer) rewriteAttrs(token *html.Token, base *url.URL, pending *[]*url.URL) bool {
+func (p *packer) rewriteAttrs(token *html.Token, base target, pending *[]target) bool {
 	changed := false
 
 	for i := range token.Attr {

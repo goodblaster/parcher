@@ -210,3 +210,22 @@ func TestConvertOfflineFetch(t *testing.T) {
 		t.Errorf("made %d requests with --fetch, want 1", requests)
 	}
 }
+
+// The fallback base puts the page's own address where the file on disk
+// stands, so a reference that escapes the saved directory can be resolved a
+// second way.
+func TestFallbackBase(t *testing.T) {
+	got := fallbackBase("dir/page.html", "https://www.test-site-3/")
+	if got != "https://www.test-site-3/page.html" {
+		t.Errorf("fallbackBase() = %q", got)
+	}
+
+	// Nothing recorded to fall back to.
+	if got := fallbackBase("dir/page.html", ""); got != "" {
+		t.Errorf("fallbackBase() = %q, want empty without a source URL", got)
+	}
+	// Nothing on disk to stand in for.
+	if got := fallbackBase(stdinName, "https://ex.com/"); got != "" {
+		t.Errorf("fallbackBase(stdin) = %q, want empty", got)
+	}
+}

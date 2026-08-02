@@ -400,3 +400,103 @@ func TestExplicitOptionsWin(t *testing.T) {
 		t.Errorf("Snapshot-Content-Location = %q", got)
 	}
 }
+
+// A saved page can reference a resource that escapes the directory it was
+// saved into. Against the file on disk that lands where nothing was ever
+// written; only the page's own address can supply it.
+func TestFallbackBaseRetrievesEscapingReference(t *testing.T) {
+	var requested []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = append(requested, r.URL.Path)
+		if r.URL.Path != "/assets/logo.png" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(pixelPNG)
+	}))
+	defer server.Close()
+
+	// The page sits in a sub-directory and points up out of it.
+	dir := t.TempDir()
+	page := write(t, dir, "saved/page.html", []byte(`<img src="../assets/logo.png">`))
+
+	options := func(network bool) Options {
+		return Options{
+			Base:         "file://" + page,
+			FallbackBase: server.URL + "/saved/page.html",
+			Network:      network,
+			OnWarn:       func(string) {},
+		}
+	}
+
+	// Offline there is no second place to look, so the reference is left.
+	doc, err := File(t.Context(), page, options(false))
+	if err != nil {
+		t.Fatalf("pack offline: %v", err)
+	}
+	if len(doc.Sections) != 1 {
+		t.Errorf("offline: got %d sections, want 1", len(doc.Sections))
+	}
+	if len(requested) != 0 {
+		t.Errorf("offline: made requests %v, want none", requested)
+	}
+
+	// With the network, the fallback supplies it — and the part is named by
+	// the address it actually came from, which is what the reference will
+	// resolve to once the archive is re-keyed.
+	doc, err = File(t.Context(), page, options(true))
+	if err != nil {
+		t.Fatalf("pack online: %v", err)
+	}
+	if len(doc.Sections) != 2 {
+		t.Fatalf("online: got %d sections, want 2: %v", len(doc.Sections), locations(doc))
+	}
+
+	fetched := section(t, doc, "/assets/logo.png")
+	if got := fetched.Headers.Get("Content-Location"); got != server.URL+"/assets/logo.png" {
+		t.Errorf("part named %q, want the address it came from", got)
+	}
+	data, err := fetched.ImageBytes()
+	if err != nil {
+		t.Fatalf("image bytes: %v", err)
+	}
+	if !bytes.Equal(data, pixelPNG) {
+		t.Error("fetched image bytes wrong")
+	}
+}
+
+// A resource present on disk is read from there; the fallback is a last
+// resort, not a preference.
+func TestFallbackNotUsedWhenLocalCopyExists(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Write([]byte("from the network"))
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	write(t, dir, "logo.png", pixelPNG)
+	page := write(t, dir, "page.html", []byte(`<img src="logo.png">`))
+
+	doc, err := File(t.Context(), page, Options{
+		FallbackBase: server.URL + "/page.html",
+		Network:      true,
+		OnWarn:       func(string) {},
+	})
+	if err != nil {
+		t.Fatalf("pack: %v", err)
+	}
+
+	if requests != 0 {
+		t.Errorf("made %d requests, want 0 — the file was on disk", requests)
+	}
+	data, err := section(t, doc, "logo.png").ImageBytes()
+	if err != nil {
+		t.Fatalf("image bytes: %v", err)
+	}
+	if !bytes.Equal(data, pixelPNG) {
+		t.Error("local copy was not the one packed")
+	}
+}

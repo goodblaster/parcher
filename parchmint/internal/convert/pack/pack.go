@@ -46,6 +46,18 @@ type Options struct {
 	// Snapshot-Content-Location. File defaults it to the input's file: URL.
 	Base string
 
+	// FallbackBase is the address the page actually came from, used to
+	// retrieve what Base cannot. A saved page can reference a resource that
+	// escapes the directory it was saved into (../../content/dam/x.svg):
+	// against Base that resolves to somewhere on the filesystem where nothing
+	// was ever written, and only the original address can supply it.
+	//
+	// The reference is re-resolved from scratch against this base — rewriting
+	// the failed file: URL would not do, since the relative path is gone by
+	// then. Retries are network fetches, so they need Network. Empty disables
+	// the fallback.
+	FallbackBase string
+
 	// Subject overrides the document subject, which otherwise comes from the
 	// page's <title>.
 	Subject string
@@ -87,7 +99,25 @@ func HTML(ctx context.Context, source []byte, opts Options) (*documents.Document
 		return nil, errors.Newf("invalid base URL %q", opts.Base)
 	}
 
-	return newPacker(ctx, opts).run(string(source), base)
+	fallback := parseURL(opts.FallbackBase)
+	if opts.FallbackBase != "" && fallback == nil {
+		return nil, errors.Newf("invalid fallback base URL %q", opts.FallbackBase)
+	}
+
+	return newPacker(ctx, opts).run(string(source), target{url: base, fallback: fallback})
+}
+
+// target is one resource to retrieve: where it should be, and where else to
+// look when it is not there.
+type target struct {
+	// url is the resource's address, resolved against the document holding
+	// the reference. It also names the resulting part.
+	url *url.URL
+
+	// fallback is the same reference resolved against the page's original
+	// address, tried when url yields nothing. Nil when there is no second
+	// place to look.
+	fallback *url.URL
 }
 
 // File packs the named HTML file, resolving its relative references against
@@ -149,17 +179,17 @@ func newPacker(ctx context.Context, opts Options) *packer {
 	}
 }
 
-func (p *packer) run(source string, base *url.URL) (*documents.Document, error) {
+func (p *packer) run(source string, base target) (*documents.Document, error) {
 	root := &part{
-		location:    urlString(base),
+		location:    urlString(base.url),
 		contentID:   p.frameID(),
 		contentType: "text/html",
 	}
 
 	// The page is already a part, so a frame or link that points back at it
 	// must not pull it in a second time.
-	if base != nil {
-		rootURL := *base
+	if base.url != nil {
+		rootURL := *base.url
 		rootURL.Fragment = ""
 		p.seen[rootURL.String()] = true
 	}
@@ -178,7 +208,7 @@ func (p *packer) run(source string, base *url.URL) (*documents.Document, error) 
 // wave fetches every URL in pending concurrently and returns the references
 // those resources brought with them. Results are processed in the order the
 // URLs were discovered, so the output does not depend on scheduling.
-func (p *packer) wave(pending []*url.URL) []*url.URL {
+func (p *packer) wave(pending []target) []target {
 	concurrency := p.opts.Concurrency
 	if concurrency <= 0 {
 		concurrency = DefaultConcurrency
@@ -190,12 +220,13 @@ func (p *packer) wave(pending []*url.URL) []*url.URL {
 	}
 
 	resources := make([]*fetch.Resource, len(pending))
+	loaded := make([]*url.URL, len(pending))
 	failures := make([]error, len(pending))
 
 	var group sync.WaitGroup
 	tokens := make(chan struct{}, concurrency)
 
-	for i, target := range pending {
+	for i, t := range pending {
 		group.Add(1)
 		go func() {
 			defer group.Done()
@@ -206,41 +237,74 @@ func (p *packer) wave(pending []*url.URL) []*url.URL {
 			ctx, cancel := context.WithTimeout(p.ctx, timeout)
 			defer cancel()
 
-			resources[i], failures[i] = p.loader.Load(ctx, target)
+			resources[i], loaded[i], failures[i] = p.load(ctx, t)
 		}()
 	}
 	group.Wait()
 
-	var next []*url.URL
-	for i, target := range pending {
+	var next []target
+	for i, t := range pending {
 		if failures[i] != nil {
-			p.warn("%s: %v", target, failures[i])
+			p.warn("%s: %v", t.url, failures[i])
 			continue
 		}
-		next = append(next, p.add(target, resources[i])...)
+		next = append(next, p.add(t, loaded[i], resources[i])...)
 	}
 
 	return next
 }
 
+// load retrieves one target, trying its fallback when the first address
+// yields nothing. It returns the resource and the address that supplied it,
+// which is what the resulting part gets named after.
+//
+// A failed fallback is reported as the ORIGINAL failure: the first address is
+// where the resource was supposed to be, and saying "no such file" is more use
+// than a connection error against a URL the caller never wrote.
+func (p *packer) load(ctx context.Context, t target) (*fetch.Resource, *url.URL, error) {
+	resource, err := p.loader.Load(ctx, t.url)
+	if err == nil {
+		return resource, t.url, nil
+	}
+	if t.fallback == nil || !p.opts.Network {
+		return nil, nil, err
+	}
+
+	resource, fallbackErr := p.loader.Load(ctx, t.fallback)
+	if fallbackErr != nil {
+		return nil, nil, err
+	}
+
+	return resource, t.fallback, nil
+}
+
 // add turns a fetched resource into a part, descending into stylesheets and
 // frames to collect the references they carry.
-func (p *packer) add(target *url.URL, resource *fetch.Resource) []*url.URL {
+func (p *packer) add(t target, from *url.URL, resource *fetch.Resource) []target {
 	newPart := &part{
-		location:    target.String(),
+		location:    from.String(),
 		contentType: resource.ContentType,
 		data:        resource.Data,
 	}
 
-	var pending []*url.URL
+	// References inside this resource resolve against wherever it lives. The
+	// fallback carries down only if the resource came from its first address:
+	// once retrieved from the fallback, that IS its address and there is
+	// nowhere further to fall back to.
+	base := target{url: from}
+	if from == t.url {
+		base.fallback = t.fallback
+	}
+
+	var pending []target
 	switch {
 	case isCSS(resource.ContentType):
-		rewritten, refs := p.scanCSS(string(resource.Data), target)
+		rewritten, refs := p.scanCSS(string(resource.Data), base)
 		newPart.data = []byte(rewritten)
 		pending = refs
 	case isHTML(resource.ContentType):
 		newPart.contentID = p.frameID()
-		rewritten, refs := p.scanHTML(string(resource.Data), target)
+		rewritten, refs := p.scanHTML(string(resource.Data), base)
 		newPart.data = []byte(rewritten)
 		pending = refs
 	}
@@ -250,41 +314,59 @@ func (p *packer) add(target *url.URL, resource *fetch.Resource) []*url.URL {
 	return pending
 }
 
-// enqueue resolves ref against base and returns the absolute URL to fetch,
-// or nil when the reference is not something to include.
-func (p *packer) enqueue(ref string, base *url.URL) *url.URL {
-	target := resolve(ref, base)
-	if target == nil {
+// enqueue resolves ref against base and returns the target to retrieve, or
+// nil when the reference is not something to include.
+func (p *packer) enqueue(ref string, base target) *target {
+	primary := resolve(ref, base.url)
+	if primary == nil {
 		p.warn("cannot resolve %s", ref)
 		return nil
 	}
 
-	switch strings.ToLower(target.Scheme) {
+	switch strings.ToLower(primary.Scheme) {
 	case "file", "http", "https":
 	default:
 		return nil
 	}
-	if !p.opts.Network && (target.Scheme == "http" || target.Scheme == "https") {
-		p.warn("%s: %v", target, fetch.ErrOffline)
+	if !p.opts.Network && isNetwork(primary) {
+		p.warn("%s: %v", primary, fetch.ErrOffline)
 		return nil
 	}
 
 	// Fragments identify a position within a resource, not a resource.
-	target.Fragment = ""
+	primary.Fragment = ""
 
-	key := target.String()
+	// The same reference against the page's own address, for when the first
+	// one turns up nothing. Only a network address is worth a second try —
+	// a second look at the filesystem would find the same nothing.
+	var fallback *url.URL
+	if base.fallback != nil {
+		if resolved := resolve(ref, base.fallback); resolved != nil && isNetwork(resolved) {
+			resolved.Fragment = ""
+			if resolved.String() != primary.String() {
+				fallback = resolved
+			}
+		}
+	}
+
+	key := primary.String()
 	if p.seen[key] {
 		return nil
 	}
 	p.seen[key] = true
 
-	return target
+	return &target{url: primary, fallback: fallback}
+}
+
+func isNetwork(target *url.URL) bool {
+	scheme := strings.ToLower(target.Scheme)
+	return scheme == "http" || scheme == "https"
 }
 
 // reference handles one reference found in the page: inline data becomes a
 // part immediately, anything else is queued for fetching and left as written
 // so that it still resolves against the part's own location.
-func (p *packer) reference(ref string, base *url.URL, pending *[]*url.URL) string {
+func (p *packer) reference(ref string, base target, pending *[]target) string {
 	if !refs.Fetchable(ref) {
 		return ref
 	}
@@ -304,8 +386,8 @@ func (p *packer) reference(ref string, base *url.URL, pending *[]*url.URL) strin
 	if strings.HasPrefix(trimmed, "cid:") {
 		return ref
 	}
-	if target := p.enqueue(ref, base); target != nil {
-		*pending = append(*pending, target)
+	if enqueued := p.enqueue(ref, base); enqueued != nil {
+		*pending = append(*pending, *enqueued)
 	}
 
 	return ref
