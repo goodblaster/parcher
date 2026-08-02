@@ -124,7 +124,12 @@ func Staticize() Recipe {
 			// empty box. freeze-iframes then stills cross-origin iframes,
 			// whose pixels only exist while they are composited in-viewport
 			// (offscreen OOPIFs are blank even in captureBeyondViewport).
+			// remove-junk-iframes before freeze-iframes: trackers must not
+			// eat the freeze step's screenshot budget, and every frame that
+			// survives to serialization costs a downstream backend a full
+			// recursive pass (see actions.RemoveJunkIframes).
 			stepIgnoreError("warm-canvases", actions.WarmCanvases()),
+			stepIgnoreError("remove-junk-iframes", actions.RemoveJunkIframes()),
 			stepIgnoreError("freeze-iframes", actions.FreezeOpaqueIframes()),
 			step("rasterize-canvases", actions.RasterizeCanvases()),
 			step("capture-video-frame", actions.CaptureVideoFrame()),
@@ -212,6 +217,9 @@ func init() {
 	Register("rasterize-font-icons", func() Step { return step("rasterize-font-icons", actions.RasterizeFontIcons()) })
 	Register("capture-video-frame", func() Step { return step("capture-video-frame", actions.CaptureVideoFrame()) })
 	Register("warm-canvases", func() Step { return stepIgnoreError("warm-canvases", actions.WarmCanvases()) })
+	Register("remove-junk-iframes", func() Step {
+		return stepIgnoreError("remove-junk-iframes", actions.RemoveJunkIframes())
+	})
 	Register("freeze-iframes", func() Step { return stepIgnoreError("freeze-iframes", actions.FreezeOpaqueIframes()) })
 	Register("rasterize-canvases", func() Step { return step("rasterize-canvases", actions.RasterizeCanvases()) })
 	Register("rewrite-links-new-tab", func() Step { return RewriteLinksStep("new-tab") })

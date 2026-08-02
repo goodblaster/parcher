@@ -35,6 +35,79 @@ const (
 	opaqueFramePoll     = 250 * time.Millisecond
 )
 
+// junkFrameMinSize is the smallest edge, in CSS pixels, a frame can have
+// and still be considered content. Ad-sync and analytics frames are 0x0
+// or 1x1; the smallest genuine embeds (compact video players, map insets)
+// are comfortably larger. Deliberately well below freeze-iframes'
+// minSize of 80: this step DELETES, so its bar for "not content" is
+// higher than that step's bar for "worth screenshotting".
+const junkFrameMinSize = 32
+
+// junkFrameHosts serve iframes that are never page content: ad exchanges,
+// tag managers, analytics and identity-sync endpoints. They are removed
+// regardless of size, because some (reCAPTCHA anchors, ad slots) do
+// occupy real layout space while being inert in a static archive.
+//
+// Suffix-matched in the script, so an entry covers its subdomains.
+var junkFrameHosts = []string{
+	"adnxs.com",
+	"adsrvr.org",
+	"amazon-adsystem.com",
+	"bat.bing.com",
+	"bidswitch.net",
+	"casalemedia.com",
+	"criteo.com",
+	"criteo.net",
+	"doubleclick.net",
+	"google-analytics.com",
+	"googlesyndication.com",
+	"googletagmanager.com",
+	"googletagservices.com",
+	"id5-sync.com",
+	"imasdk.googleapis.com",
+	"onetag-sys.com",
+	"openx.net",
+	"pubmatic.com",
+	"quantserve.com",
+	"recaptcha.net",
+	"rubiconproject.com",
+	"scorecardresearch.com",
+	"taboola.com",
+	"www.google.com/recaptcha",
+	"yieldmo.com",
+}
+
+// RemoveJunkIframes deletes tracker, ad and zero-area iframes before the
+// serialization backends see them. It is a performance step: a serializer
+// that walks frames recurses into every survivor with its own resource
+// fetching, and on ad-heavy pages that is where nearly all of an HTML
+// capture's time goes (5.0s of 5.4s on test-site-6) for a
+// content contribution measured in kilobytes.
+//
+// Runs before FreezeOpaqueIframes so that step's screenshot budget goes
+// to real embeds instead of trackers.
+func RemoveJunkIframes() chromedp.ActionFunc {
+	return func(ctx context.Context) error {
+		var stats struct {
+			Removed int `json:"removed"`
+			Hidden  int `json:"hidden"`
+			Tiny    int `json:"tiny"`
+			Tracker int `json:"tracker"`
+			Kept    int `json:"kept"`
+		}
+		if err := js.RemoveJunkIframes.Action(&stats, junkFrameMinSize, junkFrameHosts).Do(ctx); err != nil {
+			return errors.Wrap(err, "failed to remove junk iframes")
+		}
+		log.With("removed", stats.Removed).
+			With("hidden", stats.Hidden).
+			With("tiny", stats.Tiny).
+			With("tracker", stats.Tracker).
+			With("kept", stats.Kept).
+			Debug("removed junk iframes")
+		return nil
+	}
+}
+
 // restoreOccluders un-hides the fixed/sticky elements the LAST
 // focus_opaque_iframe.js call hid for its screenshot; the record format
 // matches what that script stores in window.__gbFrameShotHidden.
