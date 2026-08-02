@@ -28,6 +28,8 @@ github.com/goodblaster/pscription v0.0.9 h1:EaOTR0g+Zp2pY3R42bM1q2+VumefnXM20Nu2
 github.com/goodblaster/pscription v0.0.9/go.mod h1:OE6FGDzcwTlXVLGsGAAm/PHMBgM9pDRMcrEBkrLQ3Lw=
 github.com/goodblaster/pscription v0.0.10 h1:VVa8ZZd0oDd/uYSUf/MIYi/9XHxiTihIf9XKLhLPGRc=
 github.com/goodblaster/pscription v0.0.10/go.mod h1:OE6FGDzcwTlXVLGsGAAm/PHMBgM9pDRMcrEBkrLQ3Lw=
+github.com/goodblaster/pscription v0.0.11 h1:yVDgAsUP3tmPRid2FtjYbBExNSwOiH5LlCRXnXRp/rM=
+github.com/goodblaster/pscription v0.0.11/go.mod h1:OE6FGDzcwTlXVLGsGAAm/PHMBgM9pDRMcrEBkrLQ3Lw=
 github.com/hhrutter/lzw v1.0.0 h1:laL89Llp86W3rRs83LvKbwYRx6INE8gDn0XNb1oXtm0=
 github.com/hhrutter/lzw v1.0.0/go.mod h1:2HC6DJSn/n6iAZfgM3Pg+cP1KxeWc3ezG8bBqW5+WEo=
 github.com/hhrutter/pkcs7 v0.2.2 h1:xMoifoVWah1LNym3C0pomEiLmyJyVIBXt/8oTPyPz+8=

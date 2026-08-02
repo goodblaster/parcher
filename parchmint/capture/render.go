@@ -154,6 +154,19 @@ func RenderArchive(ctx context.Context, cfg runner.Config, fileURL string, phras
 		actions.BypassCSP(),
 		emulation.SetScriptExecutionDisabled(true))
 
+	// A page saved by a browser keeps its stylesheets as separate files
+	// beside it, and Chrome gives every local file its own opaque origin —
+	// so those sheets are cross-origin to the page that owns them and
+	// sheet.cssRules throws. They still render, so the loss is silent: it
+	// only shows up when something reads the CSSOM, as inlining the
+	// stylesheets for an HTML copy does (measured: 11 of 37 sheets readable
+	// without this, the rest dropped from the copy).
+	//
+	// Safe here in a way it would not be while browsing: the archive is a
+	// local file the user asked to convert, and the line above has already
+	// disabled script execution, so nothing in the page can use the access.
+	cfg.AllowFileAccess = true
+
 	session, err := runner.Start(ctx, fileURL, cfg)
 	if err != nil {
 		return nil, err
