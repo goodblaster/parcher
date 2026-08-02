@@ -78,7 +78,7 @@ resources the server can't reach.
 | Script | Shape | Purpose |
 |---|---|---|
 | `extract_image_urls.js` | async | Collects `<img>` (currentSrc), `video[poster]`, `input[type=image]` URLs; shadow-DOM aware. |
-| `inject_images.js` | async | Swaps collected URLs for data URLs. Removes `<source>` siblings inside `<picture>` (otherwise the external source keeps winning), clears `srcset`/`sizes`, freezes rendered dimensions. |
+| `inject_images.js` | async | Swaps collected URLs for data URLs. Removes `<source>` siblings inside `<picture>` (otherwise the external source keeps winning), clears `srcset`/`sizes`. Size freezing is deliberately narrow: pixel `width`/`height` attributes only for images laid out at their bitmap's own size (or not laid out at all), an inline `aspect-ratio` when CSS drives the box but dictates no ratio, and nothing at all when the page already sets one — because those attributes are presentational hints that pin whichever axis the page leaves `auto`. |
 | `extract_background_urls.js` | async | Collects CSS `background-image` URLs, **including `::before`/`::after` pseudo-elements**; shadow-DOM aware. |
 | `inject_background_images.js` | async | Rewrites background URLs to data URLs. Element backgrounds via inline `!important` style; pseudo-elements via generated rules keyed on a `data-gb-bg` marker attribute. |
 | `extract_font_faces.js` | async | Collects loaded `@font-face` rules (awaits `document.fonts.ready`, filters to faces actually used — pages can declare hundreds of subsetted variants) so fonts can be fetched server-side and inlined. Used by the MHT backend, which gets no fonts from Chrome's snapshot; SingleFile inlines fonts itself. |
