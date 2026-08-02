@@ -27,24 +27,60 @@ async function injectImages(urlToDataURLMap) {
             const dataURL = lookup(img.currentSrc || img.src);
             if (!dataURL) continue;
 
-            // Freeze the size the user actually SAW, and take both
-            // dimensions from the same source. Filling in only the missing
-            // one from the bitmap's INTRINSIC size, while leaving the
-            // page's own value for the other, forces an aspect ratio the
-            // image never had — a square avatar sized by CSS to
-            // height=100 came out 200x100, turning every round avatar
-            // into an oval. The rendered box is what "freeze the rendered
-            // size" always meant; natural size is only a fallback for
-            // images that are not laid out (display:none), where both
-            // values then still come from one bitmap.
+            // Freeze only what the swap can actually change — the bitmap's
+            // size — and never by pinning pixels onto an axis the page
+            // leaves `auto`.
+            //
+            // width/height attributes are PRESENTATIONAL HINTS: they apply
+            // as CSS to any axis the page's own stylesheet does not set. A
+            // responsive image (`width:100%`, height from `aspect-ratio` or
+            // `auto`) therefore keeps a responsive width while its height
+            // stays pinned at the capture viewport's value, and the picture
+            // is stretched at every other width. Measured on test-site-3:
+            // promo tiles captured at 453x604 rendered 340x604 in a 1200px
+            // window instead of 340x453 — a 33% vertical stretch — because
+            // `height="604"` outlived the layout it was measured in.
+            //
+            // Whatever is set must take both dimensions from ONE source:
+            // filling in only the missing one from the bitmap's intrinsic
+            // size while keeping the page's value for the other forces an
+            // aspect ratio the image never had (a square avatar sized by
+            // CSS to height=100 came out 200x100 — every round avatar an
+            // oval).
             if (!img.getAttribute('width') || !img.getAttribute('height')) {
                 const rect = img.getBoundingClientRect();
-                if (rect.width >= 1 && rect.height >= 1) {
-                    img.width = Math.round(rect.width);
-                    img.height = Math.round(rect.height);
-                } else if (img.naturalWidth && img.naturalHeight) {
-                    img.width = img.naturalWidth;
-                    img.height = img.naturalHeight;
+                const natW = img.naturalWidth;
+                const natH = img.naturalHeight;
+                const laidOut = rect.width >= 1 && rect.height >= 1;
+                const intrinsicSized = natW && natH &&
+                    Math.abs(rect.width - natW) <= 1 && Math.abs(rect.height - natH) <= 1;
+
+                if (!laidOut) {
+                    // display:none — no layout to preserve and no
+                    // responsive axis to break; the bitmap is the only
+                    // size information there is.
+                    if (natW && natH) {
+                        img.width = natW;
+                        img.height = natH;
+                    }
+                } else if (intrinsicSized) {
+                    // Laid out at the bitmap's own size, so nothing is
+                    // constraining it: pixels reproduce exactly what the
+                    // page was already doing, and a data URL that decodes
+                    // to a different size can't resize the element.
+                    img.width = natW;
+                    img.height = natH;
+                } else if (natW && natH &&
+                           (img.ownerDocument.defaultView || window)
+                               .getComputedStyle(img).aspectRatio === 'auto') {
+                    // CSS drives the box but dictates no ratio, so an axis
+                    // left `auto` still follows the bitmap. Keep the OLD
+                    // bitmap's RATIO — not the capture viewport's pixels —
+                    // so a data URL decoding to different dimensions than
+                    // the srcset candidate it replaces cannot reflow the
+                    // page. A page that sets its own aspect-ratio (the
+                    // common responsive case) needs nothing from us.
+                    img.style.setProperty('aspect-ratio', natW + ' / ' + natH);
                 }
             }
 
