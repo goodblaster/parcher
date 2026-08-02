@@ -114,3 +114,40 @@ func TestFNV1aMatchesJS(t *testing.T) {
 		t.Errorf("FNV1a(hello) = %s, want 4f9f2cab", got)
 	}
 }
+
+// HasLayer is the cheap presence check the conversion path asks before
+// deciding whether to carry a layer into the output. It has to agree with
+// the extractors in both containers.
+func TestHasLayer(t *testing.T) {
+	html := []byte("<html><body><p>content</p></body></html>")
+	mht := []byte("From: <Saved by Blink>\r\nContent-Type: multipart/related; boundary=\"B\"\r\n\r\n--B\r\n" +
+		"Content-Type: text/html\r\n\r\n<html></html>\r\n--B--\r\n")
+
+	if HasLayer(html) {
+		t.Error("bare html reported as carrying a layer")
+	}
+	if HasLayer(mht) {
+		t.Error("bare mht reported as carrying a layer")
+	}
+
+	withHTML := EmbedInHTML(html, sampleLayerJSON())
+	if !HasLayer(withHTML) {
+		t.Error("embedded html layer not detected")
+	}
+
+	withMHT, err := EmbedInMHT(mht, sampleLayerJSON())
+	if err != nil {
+		t.Fatalf("EmbedInMHT: %v", err)
+	}
+	if !HasLayer(withMHT) {
+		t.Error("embedded mht layer not detected")
+	}
+
+	// The two containers keep the layer in different places, so an MHT must
+	// not be judged by the HTML marker: its document part carries the page's
+	// own <script> elements quoted-printable encoded, which is not a layer.
+	if HasLayer([]byte("From: <Saved by Blink>\r\nContent-Type: multipart/related; boundary=\"B\"\r\n\r\n" +
+		`<script type=3D"` + ScriptType + `">`)) {
+		t.Error("an mht whose document merely mentions the script type reported as carrying a layer part")
+	}
+}

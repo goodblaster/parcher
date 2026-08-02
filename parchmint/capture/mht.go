@@ -30,8 +30,15 @@ func (MHT) Action(snap *Snapshot) chromedp.ActionFunc {
 		// the page actually loaded as data: URIs first — otherwise MHT
 		// archives lose icon fonts (tofu carets) and web-font text. (The
 		// SingleFile backend needs no such help; it inlines fonts itself.)
-		if err := actions.FetchAndInjectFonts()(ctx); err != nil {
-			return err
+		//
+		// An archive being converted needs none of this: its fonts are
+		// already inlined as data: URIs, and the extraction cannot run
+		// there anyway — RenderArchive disables page script execution, so
+		// the FontFaceSet callback comes back "no longer runnable".
+		if !snap.FromArchive {
+			if err := actions.FetchAndInjectFonts()(ctx); err != nil {
+				return err
+			}
 		}
 		var content string
 		if err := actions.SaveMhtToString(&content)(ctx); err != nil {

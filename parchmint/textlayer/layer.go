@@ -132,6 +132,21 @@ func FromBytes(data []byte, name string) (*Layer, error) {
 	}
 }
 
+// HasLayer reports whether archive bytes already carry an embedded layer,
+// in whichever place their container keeps it: a MIME part in an MHT, a
+// <script> element in HTML. It only looks for the marker, so it is cheap
+// enough to ask before deciding whether to embed — unlike FromBytes, which
+// parses the whole payload.
+//
+// A PDF's attachment is not a marker in the byte stream, so PDFs always
+// report false; use FromBytes to read one.
+func HasLayer(data []byte) bool {
+	if IsMHT(data) {
+		return bytes.Contains(data, []byte("Content-Type: "+MHTPartType))
+	}
+	return bytes.Contains(data, []byte(`<script type="`+ScriptType+`">`))
+}
+
 // FromHTML extracts and parses the layer from HTML archive bytes.
 func FromHTML(html []byte, name string) (*Layer, error) {
 	open := []byte(`<script type="` + ScriptType + `">`)

@@ -71,6 +71,20 @@ type RenderOptions struct {
 	// OverlayColor fills the highlight behind matched OCR words in the PDF
 	// overlay (empty = a default yellow).
 	OverlayColor string
+
+	// ExtractLayer indexes the loaded page and returns the composed layer in
+	// RenderResult.TextLayer. It is for archives that arrive WITHOUT one — a
+	// page saved by the browser, or captured with --text=false — so that the
+	// converted copy still comes out as a proper archive. When phrases are
+	// given the layer is composed from the pre-mark extraction, keeping the
+	// capture-time rule that the layer describes the page and marks are a
+	// viewing artifact.
+	ExtractLayer bool
+
+	// SourceURL is the address the archive claims to come from, used as the
+	// url of a freshly composed layer. Empty is allowed; it just leaves the
+	// field empty.
+	SourceURL string
 }
 
 // RenderResult reports what RenderArchive produced.
@@ -80,6 +94,11 @@ type RenderResult struct {
 	Bytes []byte
 	// MIME identifies Bytes ("text/html" for the document path).
 	MIME string
+
+	// TextLayer is a layer composed from the loaded page, set only when
+	// Options.ExtractLayer asked for one. Nil otherwise — including when the
+	// extraction failed, which is a warning rather than an error.
+	TextLayer []byte
 
 	DOMMatches   int
 	OCRMatches   int
@@ -164,11 +183,24 @@ func RenderArchive(ctx context.Context, cfg runner.Config, fileURL string, phras
 			if err != nil {
 				return err
 			}
+			// Index BEFORE the marks go in: the layer describes the page,
+			// and marks are a viewing artifact — the same rule capture-time
+			// marking follows.
+			if opts.ExtractLayer {
+				res.TextLayer = composeFreshLayer(payload, opts.SourceURL)
+			}
 			n, err := applyHighlights(ctx, payload, phrases, opts.Match, opts.Colors, opts.Style)
 			if err != nil {
 				return err
 			}
 			res.DOMMatches = n
+		} else if opts.ExtractLayer {
+			payload, err := extractPayload(ctx, false)
+			if err != nil {
+				log.WithError(err).Warn("could not index the archive; converting it without a text layer")
+			} else {
+				res.TextLayer = composeFreshLayer(payload, opts.SourceURL)
+			}
 		}
 
 		// OCR text is matched against the EMBEDDED layer's ocr blocks — a
@@ -242,6 +274,7 @@ func RenderArchive(ctx context.Context, cfg runner.Config, fileURL string, phras
 				DevicePixelRatio: cfg.DeviceScaleFactor,
 				PaperWidthIn:     opts.PaperWidthIn,
 				PaperHeightIn:    opts.PaperHeightIn,
+				FromArchive:      true,
 			}
 			if err := opts.Backend.Action(snap).Do(ctx); err != nil {
 				return errors.Wrapf(err, "%s backend", opts.Backend.Name())
@@ -285,6 +318,19 @@ func RenderArchive(ctx context.Context, cfg runner.Config, fileURL string, phras
 		return nil, err
 	}
 	return res, nil
+}
+
+// composeFreshLayer wraps an extraction of the loaded page into a layer
+// document, for an archive that arrived without one. A failure here is not
+// fatal: the conversion still produces a readable archive, just an unindexed
+// one, so it warns and returns nil.
+func composeFreshLayer(payload *textLayerPayload, sourceURL string) []byte {
+	out, err := composeLayer(&Snapshot{URL: sourceURL}, payload)
+	if err != nil {
+		log.WithError(err).Warn("could not compose a text layer for the converted archive")
+		return nil
+	}
+	return out
 }
 
 // frameBlockMatches counts phrase matches that fall inside same-origin

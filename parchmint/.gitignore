@@ -7,6 +7,9 @@
 *.mht
 *.mhtml
 
+# …but test fixtures are source, not output.
+!**/testdata/*.mht
+
 # Environment
 .env
 .env.local
