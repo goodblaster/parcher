@@ -57,6 +57,20 @@ type Config struct {
 	// use by another Chrome instance.
 	UserDataDir string
 
+	// AllowFileAccess lets a document loaded over file:// reach other local
+	// files: reading a stylesheet's rules through the CSSOM, fetching a
+	// sibling asset. Chrome otherwise gives every local file its own opaque
+	// origin, so a saved page's own stylesheets are cross-origin to it and
+	// sheet.cssRules throws SecurityError — which silently costs you every
+	// rule in them, since the sheets still LOAD and render.
+	//
+	// This is for reading archives off disk, not for browsing: it relaxes a
+	// real boundary, letting a local document read anything else the user can
+	// read. Turn it on only for content already trusted enough to open, and
+	// preferably alongside disabled script execution, so nothing in the page
+	// can act on the access.
+	AllowFileAccess bool
+
 	// DiskCacheDir points Chrome's HTTP cache at a fixed directory that
 	// survives across runs, even with an ephemeral profile. Repeat loads of
 	// the same site then reuse cached CSS/JS/font/image responses (subject to

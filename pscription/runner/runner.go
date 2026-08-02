@@ -126,6 +126,12 @@ func createBrowserContext(ctx context.Context, cfg Config) (context.Context, con
 		// so repeat loads reuse cached resources.
 		opts = append(opts, chromedp.Flag("disk-cache-dir", cfg.DiskCacheDir))
 	}
+	if cfg.AllowFileAccess {
+		// Local files share one origin, so a page opened from disk can read
+		// its own stylesheets and assets. See the field's documentation for
+		// what this gives up.
+		opts = append(opts, chromedp.Flag("allow-file-access-from-files", true))
+	}
 
 	ctx, cancel2 := chromedp.NewExecAllocator(ctx, opts...)
 	ctx, cancel3 := chromedp.NewContext(ctx)
