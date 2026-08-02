@@ -142,49 +142,43 @@ func TestPackedDocumentReparses(t *testing.T) {
 	}
 }
 
-func TestDataURIBecomesPart(t *testing.T) {
+// A data: URI is already self-contained. Moving it into a part and pointing
+// back at it with cid: deduplicates repeats, but Chrome does not resolve
+// those references and every inline image renders as a broken placeholder —
+// so the URI stays where it is.
+func TestDataURIStaysInline(t *testing.T) {
 	encoded := base64.StdEncoding.EncodeToString(pixelPNG)
-	source := []byte(`<img src="data:image/png;base64,` + encoded + `">`)
+	uri := "data:image/png;base64," + encoded
 
-	doc, err := HTML(t.Context(), source, Options{})
+	doc, err := HTML(t.Context(), []byte(`<img src="`+uri+`">`), Options{})
 	if err != nil {
 		t.Fatalf("pack: %v", err)
 	}
 
-	if len(doc.Sections) != 2 {
-		t.Fatalf("got %d sections, want 2", len(doc.Sections))
+	if len(doc.Sections) != 1 {
+		t.Fatalf("got %d sections, want 1 (the document alone)", len(doc.Sections))
 	}
-	if !strings.Contains(doc.Sections[0].Body, `src="cid:data-0001@mhtml.goodblaster"`) {
-		t.Errorf("data URI not replaced by a cid reference: %q", doc.Sections[0].Body)
+	if !strings.Contains(doc.Sections[0].Body, uri) {
+		t.Errorf("data URI did not survive intact: %q", doc.Sections[0].Body)
 	}
-
-	part := doc.Sections[1]
-	if got := part.Headers.Get("Content-ID"); got != "<data-0001@mhtml.goodblaster>" {
-		t.Errorf("Content-ID = %q", got)
-	}
-	data, err := part.ImageBytes()
-	if err != nil {
-		t.Fatalf("image bytes: %v", err)
-	}
-	if !bytes.Equal(data, pixelPNG) {
-		t.Error("inlined image bytes wrong")
+	if strings.Contains(doc.Sections[0].Body, "cid:") {
+		t.Error("data URI was turned into a cid: reference")
 	}
 }
 
-// The same data: URI used twice must collapse onto a single part.
-func TestRepeatedDataURIShareOnePart(t *testing.T) {
+// The same applies inside CSS, where a data: URI is just as self-contained.
+func TestDataURIInCSSStaysInline(t *testing.T) {
 	uri := "data:image/png;base64," + base64.StdEncoding.EncodeToString(pixelPNG)
-	source := []byte(`<img src="` + uri + `"><img src="` + uri + `">`)
 
-	doc, err := HTML(t.Context(), source, Options{})
+	doc, err := HTML(t.Context(), []byte(`<style>b{background:url(`+uri+`)}</style>`), Options{})
 	if err != nil {
 		t.Fatalf("pack: %v", err)
 	}
-	if len(doc.Sections) != 2 {
-		t.Errorf("got %d sections, want 2", len(doc.Sections))
+	if len(doc.Sections) != 1 {
+		t.Errorf("got %d sections, want 1", len(doc.Sections))
 	}
-	if got := strings.Count(doc.Sections[0].Body, "cid:data-0001"); got != 2 {
-		t.Errorf("cid reference used %d times, want 2", got)
+	if !strings.Contains(doc.Sections[0].Body, uri) {
+		t.Errorf("data URI in CSS did not survive: %q", doc.Sections[0].Body)
 	}
 }
 

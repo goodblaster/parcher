@@ -110,22 +110,21 @@ func TestRenderThenPack(t *testing.T) {
 		t.Fatalf("pack: %v", err)
 	}
 
-	if len(repacked.Sections) != len(original.Sections) {
-		t.Fatalf("repacked %d sections, want %d", len(repacked.Sections), len(original.Sections))
+	// Rendering inlined the image as a data: URI and packing leaves those
+	// alone, so the archive comes back as a single self-contained document
+	// rather than a document plus an image part.
+	if len(repacked.Sections) != 1 {
+		t.Fatalf("repacked %d sections, want 1", len(repacked.Sections))
 	}
 
-	// The image survives as a part with the same bytes, even though it
-	// travelled through a data: URI on the way.
+	// The image bytes still survive the round trip, now carried inline.
 	want, err := original.ImageBytes("https://example.com/pixel.png")
 	if err != nil {
 		t.Fatalf("original image: %v", err)
 	}
-	got, err := repacked.Sections[1].ImageBytes()
-	if err != nil {
-		t.Fatalf("repacked image: %v", err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Error("image bytes changed across the round trip")
+	encoded := base64.StdEncoding.EncodeToString(want)
+	if !strings.Contains(repacked.Sections[0].Body, encoded) {
+		t.Error("image bytes did not survive the round trip")
 	}
 }
 

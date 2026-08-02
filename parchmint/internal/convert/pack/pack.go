@@ -1,7 +1,7 @@
 // Package pack builds an MHT document from an HTML page and the resources it
-// references. Inline data: URIs become parts of their own, relative and
-// file: references are read from disk, and http(s) references are fetched
-// when the network is enabled.
+// references: relative and file: references are read from disk, and http(s)
+// references are fetched when the network is enabled. Inline data: URIs are
+// already self-contained and stay exactly where they are.
 //
 // Resources are discovered breadth-first: the page yields its references,
 // each fetched stylesheet yields the images and fonts it imports, and each
@@ -38,8 +38,8 @@ const (
 	DefaultFrom        = "<Saved by go-mht>"
 )
 
-// Options controls how a page is packed. The zero value packs offline: data:
-// URIs and local files only.
+// Options controls how a page is packed. The zero value packs offline: local
+// files only, with nothing fetched over the network.
 type Options struct {
 	// Base is the URL the page is treated as living at. Relative references
 	// resolve against it, and it becomes the document's
@@ -127,13 +127,8 @@ type packer struct {
 	// many references is fetched once.
 	seen map[string]bool
 
-	// dataRefs maps an inline data: URI to the cid: reference that replaced
-	// it, so repeats collapse onto one part.
-	dataRefs map[string]string
-
 	parts  []*part
 	frames int
-	blobs  int
 	title  string
 }
 
@@ -147,11 +142,10 @@ func newPacker(ctx context.Context, opts Options) *packer {
 	}
 
 	return &packer{
-		ctx:      ctx,
-		opts:     opts,
-		loader:   loader,
-		seen:     make(map[string]bool),
-		dataRefs: make(map[string]string),
+		ctx:    ctx,
+		opts:   opts,
+		loader: loader,
+		seen:   make(map[string]bool),
 	}
 }
 
@@ -287,40 +281,6 @@ func (p *packer) enqueue(ref string, base *url.URL) *url.URL {
 	return target
 }
 
-// inlineData converts a data: URI into a part of its own and returns the
-// cid: reference that replaces it. On failure it returns the URI unchanged.
-func (p *packer) inlineData(ref string) string {
-	if existing, ok := p.dataRefs[ref]; ok {
-		return existing
-	}
-
-	target, err := url.Parse(ref)
-	if err != nil {
-		p.warn("malformed data URI: %v", err)
-		return ref
-	}
-
-	resource, err := p.loader.Load(p.ctx, target)
-	if err != nil {
-		p.warn("data URI: %v", err)
-		return ref
-	}
-
-	p.blobs++
-	contentID := fmt.Sprintf("<data-%04d@mhtml.goodblaster>", p.blobs)
-
-	p.parts = append(p.parts, &part{
-		contentID:   contentID,
-		contentType: resource.ContentType,
-		data:        resource.Data,
-	})
-
-	replacement := "cid:" + strings.Trim(contentID, "<>")
-	p.dataRefs[ref] = replacement
-
-	return replacement
-}
-
 // reference handles one reference found in the page: inline data becomes a
 // part immediately, anything else is queued for fetching and left as written
 // so that it still resolves against the part's own location.
@@ -330,8 +290,15 @@ func (p *packer) reference(ref string, base *url.URL, pending *[]*url.URL) strin
 	}
 
 	trimmed := strings.ToLower(strings.TrimSpace(ref))
+
+	// A data: URI is already self-contained, so it is left exactly where it
+	// is. Moving one into a part and referring back to it by cid: looks
+	// tidier — it deduplicates repeats — but Chrome does not resolve those
+	// references, and every inline image in the archive renders as a broken
+	// placeholder. An inline data: URI always renders; that is worth more
+	// than the deduplication.
 	if strings.HasPrefix(trimmed, "data:") {
-		return p.inlineData(ref)
+		return ref
 	}
 	// A cid: reference already names a part; there is nothing to fetch.
 	if strings.HasPrefix(trimmed, "cid:") {
