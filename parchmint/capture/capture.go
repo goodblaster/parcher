@@ -1,6 +1,7 @@
 // Package capture serializes a prepared page into a self-contained snapshot.
 //
-// A Backend decides the output format (SingleFile HTML, MHTML, screenshot);
+// A Backend decides the output format (self-contained HTML, MHTML, PDF,
+// screenshot);
 // Capture runs a preparation recipe and then the backend in one browser
 // session.
 package capture
@@ -51,8 +52,8 @@ type Snapshot struct {
 	PaperHeightIn float64
 
 	// TextLayer is the composed parchmint-text/1 document, extracted from
-	// the prepared page when Options.TextLayer is set; the SingleFile
-	// backend embeds it. Nil when extraction was off or failed.
+	// the prepared page when Options.TextLayer is set; the document
+	// backends embed it. Nil when extraction was off or failed.
 	TextLayer []byte
 
 	// FromArchive marks a snapshot taken by RenderArchive — a conversion of
@@ -65,7 +66,7 @@ type Snapshot struct {
 	// favicons are the page's icons, fetched and inlined as data URIs when
 	// Options.Favicon is set. The HTML and MHT backends write them into the
 	// serialized document (embedFaviconsInHTML); the live DOM is left
-	// alone, since SingleFile drops icon links anyway.
+	// alone, since both rewrite the document on the way out regardless.
 	favicons []faviconEmbed
 }
 
@@ -99,7 +100,7 @@ type Options struct {
 
 // Backend serializes the current page state into a snapshot.
 type Backend interface {
-	// Name identifies the backend (e.g. "singlefile", "mht").
+	// Name identifies the backend (e.g. "html", "mht").
 	Name() string
 
 	// Ext is the conventional file extension for this backend's output,

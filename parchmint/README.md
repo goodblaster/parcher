@@ -86,8 +86,8 @@ highlights. Hits come with pixel coordinates (`--json`) and grep-like
 exit codes for scripting. Disable at capture with `--text=false`.
 
 Built on [pscription](https://github.com/goodblaster/pscription), which does the
-browser driving and page preparation; the capture backends (SingleFile
-HTML, MHT, PDF, screenshots) live here.
+browser driving and page preparation; the capture backends (HTML, MHT, PDF,
+screenshots) live here.
 
 ## Requirements
 
@@ -128,10 +128,15 @@ go install github.com/goodblaster/parchmint/cmd/parch@latest
 Runs on macOS, Linux, and Windows; the Apple Vision engine is compiled in
 on macOS only, and the rest of the tool is pure Go.
 
-**License note:** `capture/vendor/single-file-bundle.js` is
+**License note:** all code here is original, and `parch` carries no copyleft
+obligation however it is distributed or offered as a service. The HTML
+serializer is Chrome's own DOM snapshot plus this repo's inliner
+(`internal/convert/render`).
+
+Earlier versions vendored
 [single-file-core](https://github.com/gildas-lormeau/single-file-core)
-(AGPL-3.0-or-later), used as the final HTML serializer. All other code is
-original.
+(AGPL-3.0-or-later) as the HTML serializer. It has been removed outright —
+not made optional — after the native backend was measured against it.
 
 Planned: markdown export; native Windows OCR via `Windows.Media.Ocr`
 (scaffolded in `internal/ocr/windows`, so `index` would need no install

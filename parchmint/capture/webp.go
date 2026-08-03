@@ -14,6 +14,10 @@ import (
 // when lossless matters.
 type WebP struct{}
 
+func init() {
+	Register("webp", func() Backend { return WebP{} })
+}
+
 func (WebP) Name() string { return "webp" }
 func (WebP) Ext() string  { return ".webp" }
 

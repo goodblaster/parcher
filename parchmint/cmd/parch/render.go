@@ -33,16 +33,20 @@ func resolveFormat(format string, marking bool) (capture.Backend, string, error)
 	switch format {
 	case "":
 		if !marking {
-			return nil, "", fmt.Errorf("render needs -f (html, mht, pdf, png, jpeg, or webp)")
+			return nil, "", fmt.Errorf("render needs -f (%s)", formatList())
 		}
 		return nil, prefix + ".html", nil // container fixed up later for MHT
 	case "html":
+		// Deliberately NOT capture.HTML: rendering an archive serializes the
+		// loaded (and possibly marked) DOM directly. Going through a backend
+		// here would re-snapshot a document that is already self-contained.
 		return nil, prefix + ".html", nil
-	case "mht", "pdf", "png", "jpeg", "jpg", "webp":
-		b := backendFor(format)
-		return b, prefix + b.Ext(), nil
 	}
-	return nil, "", fmt.Errorf("unknown format %q (want html, mht, pdf, png, jpeg, or webp)", format)
+	b := backendFor(format)
+	if b == nil {
+		return nil, "", fmt.Errorf("unknown format %q (want %s)", format, formatList())
+	}
+	return b, prefix + b.Ext(), nil
 }
 
 func runMarkOrRender(args []string, marking bool) {

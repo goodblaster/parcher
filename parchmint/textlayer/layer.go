@@ -220,8 +220,9 @@ func FNV1a(s string) string {
 
 // EmbedInHTML returns archive bytes carrying layerJSON as the typed
 // <script> element: an existing layer is replaced in place; otherwise the
-// element is spliced before </body> (appended when the tag is absent —
-// SingleFile's compressHTML omits it). Every `</` in the JSON is escaped
+// element is spliced before </body> (appended when the tag is absent, which
+// a minifying serializer is entitled to do — never assume it is there when
+// post-processing archive bytes). Every `</` in the JSON is escaped
 // to `<\/` — a no-op JSON string escape — so the payload cannot terminate
 // its own script element; json.Unmarshal undoes it for free.
 func EmbedInHTML(html, layerJSON []byte) []byte {

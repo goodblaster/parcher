@@ -17,19 +17,24 @@ import (
 // "repair" pass that rewrote soft line breaks inside data URIs was both
 // unnecessary (browsers decode QP themselves) and pathologically slow
 // (O(n²) regex rebuilds of a multi-megabyte string turned a 77ms capture
-// into an 8-minute one). SingleFile HTML remains the preferred backend;
-// this exists for callers who specifically want MHTML.
+// into an 8-minute one). This exists for callers who specifically want the
+// MIME container; capture.HTML is the default, and takes the same snapshot
+// before inlining it into a single document.
 type MHT struct{}
 
-func (MHT) Name() string { return "mht" }
-func (MHT) Ext() string  { return ".mht" }
+func init() {
+	Register("mht", func() Backend { return MHT{} })
+}
+
+func (MHT) Name() string  { return "mht" }
+func (MHT) Ext() string   { return ".mht" }
+func (MHT) CarriesLayer() {}
 
 func (MHT) Action(snap *Snapshot) chromedp.ActionFunc {
 	return func(ctx context.Context) error {
 		// Chrome's MHTML snapshot omits CSS web fonts, so embed the ones
 		// the page actually loaded as data: URIs first — otherwise MHT
-		// archives lose icon fonts (tofu carets) and web-font text. (The
-		// SingleFile backend needs no such help; it inlines fonts itself.)
+		// archives lose icon fonts (tofu carets) and web-font text.
 		//
 		// An archive being converted needs none of this: its fonts are
 		// already inlined as data: URIs, and the extraction cannot run

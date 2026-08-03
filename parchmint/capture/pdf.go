@@ -29,6 +29,10 @@ import (
 //     limit (no mid-content page breaks); pagination for very long pages
 type PDF struct{}
 
+func init() {
+	Register("pdf", func() Backend { return PDF{} })
+}
+
 func (PDF) Name() string { return "pdf" }
 func (PDF) Ext() string  { return ".pdf" }
 

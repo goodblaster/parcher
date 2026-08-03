@@ -111,7 +111,7 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.StringVarP(&output, "output", "o", "", "output file; '-' for stdout (default: config filename, else derived from URL)")
-	flag.StringVarP(&format, "format", "f", defFormat, "output format: html (self-contained page), mht, pdf, png, jpeg, webp")
+	flag.StringVarP(&format, "format", "f", defFormat, "output format: "+formatList()+" (html is a self-contained page)")
 	flag.StringVar(&links, "links", defLinks, "link policy: keep (unchanged), new-tab (external links open in a new tab), disable (links kept but unclickable)")
 	flag.StringVar(&rxFile, "rx", "", "run a .rx pscription as the prep before serializing (e.g. to log in first)")
 	flag.StringVar(&profile, "profile", "", "persistent Chrome user-data dir; log in once and reuse the session")
@@ -178,7 +178,7 @@ func main() {
 
 	backend := backendFor(format)
 	if backend == nil {
-		fmt.Fprintf(os.Stderr, "unknown format %q (want html, mht, pdf, png, jpeg, or webp)\n", format)
+		fmt.Fprintf(os.Stderr, "unknown format %q (want %s)\n", format, formatList())
 		os.Exit(2)
 	}
 
@@ -248,8 +248,10 @@ func main() {
 	start := time.Now()
 
 	opts := capture.Options{
-		TextLayer:     text && (format == "html" || format == "mht"),
-		Favicon:       favicon && (format == "html" || format == "mht"),
+		// Only a document container can carry these; the backend answers for
+		// itself, so a new or compiled-out backend needs no edit here.
+		TextLayer:     text && capture.CarriesLayer(backend),
+		Favicon:       favicon && capture.CarriesLayer(backend),
 		Highlight:     highlight,
 		PaperWidthIn:  paperWidthIn,
 		PaperHeightIn: paperHeightIn,
@@ -308,22 +310,17 @@ func runHelpCommand(args []string) {
 	os.Exit(2)
 }
 
+// backendFor resolves -f to a backend. Backends register themselves in
+// capture, so this stays correct however many of them the build contains.
 func backendFor(format string) capture.Backend {
-	switch format {
-	case "html":
-		return capture.SingleFile{}
-	case "mht":
-		return capture.MHT{}
-	case "pdf":
-		return capture.PDF{}
-	case "png":
-		return capture.Screenshot{}
-	case "jpeg", "jpg":
-		return capture.JPEG{}
-	case "webp":
-		return capture.WebP{}
-	}
-	return nil
+	return capture.Lookup(format)
+}
+
+// formatList renders the registered formats for help text and errors. Built
+// from the registry rather than written out, so it can never advertise a
+// format this binary does not have.
+func formatList() string {
+	return strings.Join(capture.Formats(), ", ")
 }
 
 // resolveDest picks the output path and whether to write to stdout, applying:
