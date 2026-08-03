@@ -24,6 +24,12 @@ const (
 	WaitForSliders         ScriptFile = "page-prep/wait_for_sliders.js"
 	DetectSliderDefect     ScriptFile = "page-prep/detect_slider_defect.js"
 	PreserveWebGLBuffer    ScriptFile = "page-prep/preserve_webgl_buffer.js"
+
+	// Serialization-visible state: runtime-only state that a serializer
+	// walking markup cannot see, written back into the DOM.
+	MaterializeFormState      ScriptFile = "page-prep/materialize_form_state.js"
+	FlattenAdoptedStylesheets ScriptFile = "page-prep/flatten_adopted_stylesheets.js"
+	LinkShadowStyles          ScriptFile = "page-prep/link_shadow_styles.js"
 )
 
 // Media handling scripts
@@ -57,6 +63,8 @@ const (
 	RemoveUnusedCSS        ScriptFile = "resources/remove_unused_css.js"
 	RemoveUnusedFonts      ScriptFile = "resources/remove_unused_fonts.js"
 	InlineIframes          ScriptFile = "resources/inline_iframes.js"
+	ListCrossOriginSheets  ScriptFile = "resources/list_crossorigin_sheets.js"
+	InlineSheetText        ScriptFile = "resources/inline_sheet_text.js"
 )
 
 // Utility scripts

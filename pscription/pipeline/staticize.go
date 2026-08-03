@@ -136,10 +136,11 @@ func Staticize() Recipe {
 			step("rasterize-font-icons", actions.RasterizeFontIcons()),
 			step("fetch-images", actions.FetchAndInjectImagesCached(prefetch)),
 			step("fetch-backgrounds", actions.FetchAndInjectBackgrounds()),
-			// Note: web-font embedding is NOT here. SingleFile inlines fonts
-			// itself, so doing it in shared prep would double-embed them in
-			// HTML. Only Chrome's MHTML snapshot omits fonts, so the MHT
-			// backend embeds them (see capture/mht.go).
+			// Note: web-font embedding is NOT here. Chrome's snapshot omits
+			// fonts, so the backends built on it (HTML, MHT) embed them
+			// themselves, at a point where they know they need them; a
+			// serializer that inlines fonts on its own would double-embed
+			// them if shared prep did it too.
 			stepIgnoreError("wait-quiet", actions.RunScriptIgnoreError(js.WaitForQuiet, nil, recheckQuietMS, 2000)),
 
 			// Late-loading popups, then a final sweep before capture:
@@ -152,6 +153,26 @@ func Staticize() Recipe {
 			stepIgnoreError("dismiss-popups", actions.DismissPopups()),
 			stepIgnoreError("remove-blocking-overlays", actions.RunScriptIgnoreError(js.RemoveBlockingOverlays, nil)),
 			stepIgnoreError("wait-quiet", actions.RunScriptIgnoreError(js.WaitForQuiet, nil, 300, 1000)),
+
+			// A cross-origin stylesheet renders but cannot be READ, so the
+			// CSSOM-inspecting steps below (and the backends' font
+			// extraction) are blind to it. Inlining its text makes it
+			// readable. Before the state-materializing steps, since it adds
+			// elements; after the layout work, since it changes no layout.
+			stepIgnoreError("inline-crossorigin-css", actions.InlineCrossOriginStylesheets()),
+
+			// Last: make runtime-only state visible to a serializer that
+			// walks markup. These run at the very end because every step
+			// above can still change the DOM and what gets written back has
+			// to be the FINAL state. Both are layout-neutral (an attribute
+			// the page already reflects, a stylesheet already in effect), so
+			// nothing needs to settle afterwards.
+			stepIgnoreError("materialize-form-state", actions.RunScriptIgnoreError(js.MaterializeFormState, nil)),
+			stepIgnoreError("flatten-adopted-stylesheets", actions.RunScriptIgnoreError(js.FlattenAdoptedStylesheets, nil)),
+			// After flatten-adopted-stylesheets, which deliberately leaves
+			// shadow roots alone: this one owns them, and would otherwise
+			// pick up its own output.
+			stepIgnoreError("link-shadow-styles", actions.RunScriptIgnoreError(js.LinkShadowStyles, nil)),
 		},
 	}
 }
@@ -222,6 +243,18 @@ func init() {
 	})
 	Register("freeze-iframes", func() Step { return stepIgnoreError("freeze-iframes", actions.FreezeOpaqueIframes()) })
 	Register("rasterize-canvases", func() Step { return step("rasterize-canvases", actions.RasterizeCanvases()) })
+	Register("inline-crossorigin-css", func() Step {
+		return stepIgnoreError("inline-crossorigin-css", actions.InlineCrossOriginStylesheets())
+	})
+	Register("materialize-form-state", func() Step {
+		return stepIgnoreError("materialize-form-state", actions.RunScriptIgnoreError(js.MaterializeFormState, nil))
+	})
+	Register("flatten-adopted-stylesheets", func() Step {
+		return stepIgnoreError("flatten-adopted-stylesheets", actions.RunScriptIgnoreError(js.FlattenAdoptedStylesheets, nil))
+	})
+	Register("link-shadow-styles", func() Step {
+		return stepIgnoreError("link-shadow-styles", actions.RunScriptIgnoreError(js.LinkShadowStyles, nil))
+	})
 	Register("rewrite-links-new-tab", func() Step { return RewriteLinksStep("new-tab") })
 	Register("rewrite-links-disable", func() Step { return RewriteLinksStep("disable") })
 }

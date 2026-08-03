@@ -34,7 +34,9 @@ type fontFace struct {
 // applies to cross-origin fonts — and injects overriding @font-face rules
 // with the same descriptors, so the data: source wins offline.
 //
-// Harmless to the SingleFile backend, which already inlines fonts.
+// It can only see faces it can READ: a cross-origin stylesheet throws on
+// cssRules and contributes nothing, so InlineCrossOriginStylesheets has to
+// run first or whole typefaces go missing without a word.
 func FetchAndInjectFonts() chromedp.ActionFunc {
 	return func(ctx context.Context) error {
 		var faces []fontFace
