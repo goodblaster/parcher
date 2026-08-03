@@ -176,7 +176,10 @@ func (r *renderer) html(section *sections.Section) ([]byte, error) {
 				out.WriteString(replacement)
 				continue
 			}
-			if r.rewriteAttrs(&token, base) {
+			// Both rewrites must run before the token is emitted, so neither
+			// short-circuits the other.
+			rewritten := r.rewriteAttrs(&token, base)
+			if reviveShadowRoot(&token) || rewritten {
 				out.WriteString(token.String())
 				continue
 			}
@@ -192,6 +195,29 @@ func (r *renderer) html(section *sections.Section) ([]byte, error) {
 			out.Write(tokenizer.Raw())
 		}
 	}
+}
+
+// reviveShadowRoot renames Blink's `shadowmode` attribute to the standard
+// `shadowrootmode`, reporting whether it changed anything.
+//
+// Chrome's MHTML writer serializes a shadow root — open AND closed, which no
+// page script can do — as `<template shadowmode="open">`, but that spelling is
+// honored only by Blink's own MHTML loader. In an ordinary HTML file the
+// template is inert: the content is present in the markup and renders as
+// nothing at all. The standard declarative-shadow-DOM attribute is what makes
+// the parser attach it, and the two differ by nothing but the name.
+func reviveShadowRoot(token *html.Token) bool {
+	if token.Data != "template" {
+		return false
+	}
+	for i := range token.Attr {
+		if strings.ToLower(token.Attr[i].Key) != "shadowmode" {
+			continue
+		}
+		token.Attr[i].Key = "shadowrootmode"
+		return true
+	}
+	return false
 }
 
 // stylesheetLink replaces a <link rel=stylesheet> with a <style> element

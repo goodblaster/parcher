@@ -9,6 +9,10 @@ import (
 // Screenshot captures the page as a full-page PNG.
 type Screenshot struct{}
 
+func init() {
+	Register("png", func() Backend { return Screenshot{} })
+}
+
 func (Screenshot) Name() string { return "screenshot" }
 func (Screenshot) Ext() string  { return ".png" }
 

@@ -12,6 +12,11 @@ import (
 // transparency; use the Screenshot (PNG) backend when lossless matters.
 type JPEG struct{}
 
+func init() {
+	Register("jpeg", func() Backend { return JPEG{} })
+	RegisterAlias("jpg", "jpeg")
+}
+
 func (JPEG) Name() string { return "jpeg" }
 func (JPEG) Ext() string  { return ".jpg" }
 

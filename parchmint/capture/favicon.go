@@ -69,9 +69,9 @@ type faviconEmbed struct {
 //
 // captureFavicon collects the page's icons and returns them as data URIs
 // for a backend to write into the serialized archive. It deliberately does
-// NOT touch the live DOM: SingleFile drops icon links during serialization
-// and the MHT path rewrites the document anyway, so both backends embed
-// from these values (see embedFaviconsInHTML). Verified by disabling an
+// NOT touch the live DOM: both document backends rewrite the serialized
+// document on the way out anyway, so both embed from these values (see
+// embedFaviconsInHTML). Verified by disabling an
 // earlier DOM-injection step: both formats still carry their icons, and
 // the MHT keeps no external icon href.
 func captureFavicon(ctx context.Context) ([]faviconEmbed, int, error) {

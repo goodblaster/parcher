@@ -17,8 +17,8 @@ out=$(mktemp -d)
 
 for policy in keep new-tab disable; do
 	"$parch" --links "$policy" -o "$out/$policy.html" "$url" 2>/dev/null
-	# SingleFile's compressHTML strips attribute quotes, so match href with
-	# an optional quote; tolerate no match under `set -e`.
+	# Match href with an optional quote — a minifying serializer may strip
+	# them; tolerate no match under `set -e`.
 	link=$(grep -oiE '<a [^>]*href="?http[^>]*>' "$out/$policy.html" | head -1 || true)
 	printf "  %-8s %s\n" "$policy" "${link:-<no external link found>}"
 done
