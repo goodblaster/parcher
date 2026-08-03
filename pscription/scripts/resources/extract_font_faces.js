@@ -25,8 +25,31 @@ async function extractFontFaces() {
         const n = norm(r);
         return n === '' ? FULL_RANGE : n;
     };
+
+    // The CSS rule and the FontFaceSet entry describe the SAME face in
+    // different words, so the descriptors have to be compared by meaning, not
+    // as strings. A rule saying `font-weight: normal` against an entry
+    // reporting `400` is one face, and matching them literally dropped it as
+    // unused — which is how test-site-2 archived with 6 of its 25
+    // fonts and rendered its headings in a system fallback.
+    const weightKey = (w) => {
+        const n = norm(w) || 'normal';
+        // A variable font declares a range ("400 700"); keep it as a range,
+        // just with the keywords resolved.
+        return n.split(' ').map((part) => {
+            if (part === 'normal') return '400';
+            if (part === 'bold') return '700';
+            return part;
+        }).join(' ');
+    };
+    const styleKey = (s) => {
+        const n = norm(s) || 'normal';
+        // `oblique 0deg` is upright; anything else oblique keeps its angle.
+        if (n === 'oblique 0deg' || n === 'oblique 0') return 'normal';
+        return n;
+    };
     const key = (family, style, weight, range) =>
-        norm(family) + '|' + norm(style || 'normal') + '|' + norm(weight || 'normal') + '|' + rangeKey(range);
+        norm(family) + '|' + styleKey(style) + '|' + weightKey(weight) + '|' + rangeKey(range);
 
     // Descriptor keys of fonts that actually loaded.
     const loaded = new Set();

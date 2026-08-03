@@ -1,8 +1,11 @@
 // Removes iframes that carry nothing archivable, just before the embed
 // steps. This is a COST step, not a cleanup step: a serializer that walks
-// frames (SingleFile) gives every surviving iframe a full recursive
-// serialization pass with its own resource fetching and timeouts, and
-// tracker frames are the expensive majority. Measured on test-site-6,
+// frames gives every surviving iframe a full recursive serialization pass
+// with its own resource fetching and timeouts, and tracker frames are the
+// expensive majority. The figures below were measured against parchmint's
+// since-retired vendored serializer, so treat them as an upper bound —
+// Chrome's snapshot is cheaper — but keeping trackers out of archives is
+// reason enough on its own. Measured on test-site-6,
 // the five iframes present were a reCAPTCHA anchor, a Criteo ad-sync
 // pixel and three srcless 0x0 frames; serializing them cost 5.0s of a
 // 5.4s capture and contributed 1.9 KB to a 6 MB archive.

@@ -41,7 +41,27 @@ async function waitForSliders(maxMs) {
     // appear — measured at 8s per pass on a page with no carousel at all.
     const expected = libs.filter((l) =>
         (l.loaded() || referenced(l.ref)) && document.querySelector(l.candidates));
-    if (expected.length === 0) {
+
+    // Those candidate selectors are classes the library ADDS at init, so a
+    // carousel that has not initialised yet matches none of them and this
+    // would not wait for it at all — the exact case worth waiting for. The
+    // stacked shape is visible before init and is what we actually want
+    // gone, so wait on it too. See detect_slider_defect.js for the
+    // measurement behind the threshold.
+    const CAROUSEL_SELECTOR = [
+        'carousel', 'slider', 'slick', 'swiper', 'owl-', 'splide', 'glide', 'flickity',
+    ].map((n) => `[class*="${n}" i]`).join(',');
+
+    const stackedCount = () => {
+        const limit = (window.innerHeight || 900) * 3;
+        let n = 0;
+        for (const el of document.querySelectorAll(CAROUSEL_SELECTOR)) {
+            if (el.children.length >= 3 && el.getBoundingClientRect().height >= limit) n++;
+        }
+        return n;
+    };
+
+    if (expected.length === 0 && stackedCount() === 0) {
         return { waited: false };
     }
 
@@ -49,11 +69,11 @@ async function waitForSliders(maxMs) {
     // referenced but the script never runs, it can't init and we time out.)
     const ready = (l) => document.querySelectorAll(l.marker).length > 0;
 
-    while (!expected.every(ready) && Date.now() - start < maxMs) {
+    while ((!expected.every(ready) || stackedCount() > 0) && Date.now() - start < maxMs) {
         await sleep(150);
     }
 
-    const result = { waited: true, elapsed: Date.now() - start };
+    const result = { waited: true, elapsed: Date.now() - start, stacked: stackedCount() };
     for (const l of expected) {
         result[l.name] = document.querySelectorAll(l.marker).length;
     }
