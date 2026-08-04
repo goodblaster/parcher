@@ -55,7 +55,11 @@ func WaitForNetworkIdleQuiet(timeout, quiet time.Duration) chromedp.ActionFunc {
 		if err := network.Enable().Do(ctx); err != nil {
 			return err
 		}
-		defer network.Disable().Do(ctx)
+		// Deliberately NOT disabled on the way out. Enabling is idempotent
+		// and cheap; disabling is global to the session, so a prospective
+		// wait that tidied up after itself would silence any SettleMonitor
+		// listening on the same target — and the monitor's whole value is a
+		// record with no gaps in it.
 
 		var (
 			mu           sync.Mutex

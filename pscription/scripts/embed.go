@@ -20,6 +20,7 @@ const (
 	RewriteLinks           ScriptFile = "page-prep/rewrite_links.js"
 	WaitForImages          ScriptFile = "page-prep/wait_for_images.js"
 	WaitForQuiet           ScriptFile = "page-prep/wait_for_quiet.js"
+	SettleMonitor          ScriptFile = "page-prep/settle_monitor.js"
 	WaitForStableLayout    ScriptFile = "page-prep/wait_for_stable_layout.js"
 	WaitForSliders         ScriptFile = "page-prep/wait_for_sliders.js"
 	DetectSliderDefect     ScriptFile = "page-prep/detect_slider_defect.js"
