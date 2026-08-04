@@ -25,17 +25,30 @@ import (
 //   - Image/background embedding uses server-side fetching, which bypasses
 //     CORS and preserves carousel/late-load images.
 //
-// A quiet-window is a FLOOR on what a wait costs: an already-quiet page
-// still sits through it to prove it stayed quiet. The first check after
-// load earns the full window; by the later re-checks the page has already
-// demonstrated it can go quiet, so they use a shorter one. (The final
-// pre-capture wait was already 300ms on the same reasoning.)
+// Quiet windows: the first check after load earns the full window; by the
+// later re-checks the page has already demonstrated it can go quiet, so they
+// use a shorter one. (The final pre-capture wait was already 300ms on the
+// same reasoning.)
+//
+// These are no longer a FLOOR on what a wait costs. They were, for as long as
+// each wait installed its own observer when it started — an already-quiet
+// page still had to sit through the window proving it stayed quiet, which
+// made the waits a flat ~3.5s tax on every capture regardless of the page.
+// The SettleMonitor below has been recording since before navigation, so a
+// window is now a question about the past and a settled page answers it on
+// the first check. See actions.SettleMonitor for the measurements.
 const (
 	recheckQuiet   = 250 * time.Millisecond
 	recheckQuietMS = 250
 )
 
 func Staticize() Recipe {
+	// Records network and DOM activity from before the first request, so
+	// every wait below can consult history instead of buying a window. Its
+	// Attach must stay in PreNavigate: a monitor that starts after
+	// navigation has no record of the load it is being asked about.
+	settle := actions.NewSettleMonitor()
+
 	// Shared by this recipe's dialog steps and the settle that follows
 	// them: the pause exists to let a dismissal's reaction (which may be a
 	// full reload) begin, so with nothing dismissed there is nothing to
@@ -55,6 +68,7 @@ func Staticize() Recipe {
 		// the page loads, so most banners decide they were already
 		// answered and never render.
 		PreNavigate: []PreNavFunc{
+			func(url string) chromedp.Action { return settle.Attach() },
 			// Site CSPs without data: in img-src silently block every data
 			// URI the prep injects — broken-image placeholders in the
 			// live-rendering backends (pdf/png/jpeg/webp).
@@ -71,7 +85,7 @@ func Staticize() Recipe {
 			stepIgnoreError("hide-overlays", actions.RunScriptIgnoreError(js.HideOverlays, nil)),
 
 			// Let the initial load settle: network first, then DOM quiet.
-			step("wait-network-idle", actions.WaitForNetworkIdle(5*time.Second)),
+			step("wait-network-idle", settle.WaitForNetworkIdle(5*time.Second)),
 			stepIgnoreError("wait-quiet", actions.RunScriptIgnoreError(js.WaitForQuiet, nil, 500, 3000)),
 
 			// Dialog clearing, strongest first: exact selectors for known
@@ -85,7 +99,7 @@ func Staticize() Recipe {
 			stepIgnoreError("dismiss-popups", actions.DismissPopupsCounting(&dismissed)),
 			SleepIf("settle", 1500*time.Millisecond, func() bool { return dismissed.Acted }),
 			step("wait-ready", actions.WaitForReady(10*time.Second)),
-			step("wait-network-idle", actions.WaitForNetworkIdleQuiet(5*time.Second, recheckQuiet)),
+			step("wait-network-idle", settle.WaitForNetworkIdleQuiet(5*time.Second, recheckQuiet)),
 			stepIgnoreError("wait-quiet", actions.RunScriptIgnoreError(js.WaitForQuiet, nil, recheckQuietMS, 3000)),
 			stepIgnoreError("hide-overlays", actions.RunScriptIgnoreError(js.HideOverlays, nil)),
 			stepIgnoreError("dismiss-cmp", actions.RunScriptIgnoreError(js.DismissCMP, nil)),
@@ -98,7 +112,7 @@ func Staticize() Recipe {
 			stepIgnoreError("force-image-loading", actions.RunScriptIgnoreError(js.ForceImageLoading, nil)),
 			stepIgnoreError("prefetch-images", actions.PrefetchImages(prefetch)),
 			stepIgnoreError("scroll-and-wait-images", actions.RunScriptIgnoreError(js.ScrollAndWaitImages, nil)),
-			step("wait-network-idle", actions.WaitForNetworkIdleQuiet(5*time.Second, recheckQuiet)),
+			step("wait-network-idle", settle.WaitForNetworkIdleQuiet(5*time.Second, recheckQuiet)),
 			stepIgnoreError("force-image-loading", actions.RunScriptIgnoreError(js.ForceImageLoading, nil)),
 			step("wait-images", actions.WaitForImages(10*time.Second)),
 			stepIgnoreError("prefetch-images", actions.PrefetchImages(prefetch)),
@@ -148,7 +162,7 @@ func Staticize() Recipe {
 			// anything still covering the page. A short quiet-wait lets the
 			// last DOM edits (overlay removal) paint; it returns as soon as
 			// things settle instead of always burning a fixed pause.
-			step("wait-network-idle", actions.WaitForNetworkIdleQuiet(10*time.Second, recheckQuiet)),
+			step("wait-network-idle", settle.WaitForNetworkIdleQuiet(10*time.Second, recheckQuiet)),
 			stepIgnoreError("dismiss-cmp", actions.RunScriptIgnoreError(js.DismissCMP, nil)),
 			stepIgnoreError("dismiss-popups", actions.DismissPopups()),
 			stepIgnoreError("remove-blocking-overlays", actions.RunScriptIgnoreError(js.RemoveBlockingOverlays, nil)),
@@ -206,6 +220,10 @@ func init() {
 	Register("hide-overlays", func() Step {
 		return stepIgnoreError("hide-overlays", actions.RunScriptIgnoreError(js.HideOverlays, nil))
 	})
+	// The registered waits are the standalone, prospective ones: a step
+	// looked up by name has no recipe to share a SettleMonitor with, so it
+	// pays its quiet window. Recipes that want history-based waits build
+	// them from a monitor they own, as Staticize and Minimal do.
 	Register("wait-network-idle", func() Step { return step("wait-network-idle", actions.WaitForNetworkIdle(5*time.Second)) })
 	Register("wait-ready", func() Step { return step("wait-ready", actions.WaitForReady(10*time.Second)) })
 	Register("wait-quiet", func() Step {

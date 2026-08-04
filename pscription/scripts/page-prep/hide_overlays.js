@@ -41,6 +41,17 @@
         .om-popup,
         .om-overlay,
 
+        /* A rendered OptinMonster campaign: id="om-<slug>" AND a Campaign
+           class token, two independent signals that must BOTH hold, with the
+           overlay campaign types named explicitly so an inline campaign —
+           which is page content — is left alone. Anchored on neither "om-"
+           alone nor "keywest-", both of which are shared with other markup
+           on this very site. */
+        [id^="om-" i][class~="Campaign"][class~="CampaignType--popup"],
+        [id^="om-" i][class~="Campaign"][class~="CampaignType--fullscreen"],
+        [id^="om-" i][class~="Campaign"][class~="CampaignType--slide"],
+        [id^="om-" i][class~="Campaign"][class~="CampaignType--floating"],
+
         /* Modal backdrops (the dimming layer, not the dialog content) */
         .modal-backdrop,
         .popup-backdrop,

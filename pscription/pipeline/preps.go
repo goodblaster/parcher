@@ -23,15 +23,20 @@ func None() Recipe {
 // media. This is the right default for scraping/extraction (rx), where you
 // want the rendered content, not a self-contained artifact.
 func Minimal() Recipe {
+	// See Staticize: the monitor is what keeps a quiet window from being a
+	// floor on every wait's cost.
+	settle := actions.NewSettleMonitor()
+
 	return Recipe{
 		Name: "minimal",
 		PreNavigate: []PreNavFunc{
+			func(url string) chromedp.Action { return settle.Attach() },
 			func(url string) chromedp.Action { return actions.PreseedConsentCookies(url) },
 			func(url string) chromedp.Action { return actions.PreseedConsentStorage() },
 		},
 		Steps: []Step{
 			stepIgnoreError("hide-overlays", actions.RunScriptIgnoreError(js.HideOverlays, nil)),
-			step("wait-network-idle", actions.WaitForNetworkIdle(5*time.Second)),
+			step("wait-network-idle", settle.WaitForNetworkIdle(5*time.Second)),
 			stepIgnoreError("wait-quiet", actions.RunScriptIgnoreError(js.WaitForQuiet, nil, 500, 3000)),
 			stepIgnoreError("dismiss-cmp", actions.RunScriptIgnoreError(js.DismissCMP, nil)),
 			stepIgnoreError("dismiss-popups", actions.DismissPopups()),
