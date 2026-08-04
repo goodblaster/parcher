@@ -26,6 +26,8 @@ github.com/goodblaster/logos v0.2.0 h1:WiSrfycj+rzrlTlPsj7QnQMilKAYUi5KXj5ZoDQ8Z
 github.com/goodblaster/logos v0.2.0/go.mod h1:m6ewgVADd401e7F4630nczg6LL4MPi9UoE4jL+X8fmY=
 github.com/goodblaster/pscription v0.0.12 h1:x+Okeo8ocSlr2Hi3gXruidzKVIqn8VsOUWwlOs7I5fs=
 github.com/goodblaster/pscription v0.0.12/go.mod h1:OE6FGDzcwTlXVLGsGAAm/PHMBgM9pDRMcrEBkrLQ3Lw=
+github.com/goodblaster/pscription v0.0.13 h1:XgRM0O+KGoZ5ceYXy352bTQlakiTNGNwhILRZtXl0/A=
+github.com/goodblaster/pscription v0.0.13/go.mod h1:OE6FGDzcwTlXVLGsGAAm/PHMBgM9pDRMcrEBkrLQ3Lw=
 github.com/hhrutter/lzw v1.0.0 h1:laL89Llp86W3rRs83LvKbwYRx6INE8gDn0XNb1oXtm0=
 github.com/hhrutter/lzw v1.0.0/go.mod h1:2HC6DJSn/n6iAZfgM3Pg+cP1KxeWc3ezG8bBqW5+WEo=
 github.com/hhrutter/pkcs7 v0.2.2 h1:xMoifoVWah1LNym3C0pomEiLmyJyVIBXt/8oTPyPz+8=

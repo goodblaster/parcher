@@ -9,7 +9,7 @@ require (
 	github.com/goodblaster/errors v0.1.0
 	github.com/goodblaster/go-mht v0.0.1
 	github.com/goodblaster/logos v0.2.0
-	github.com/goodblaster/pscription v0.0.12
+	github.com/goodblaster/pscription v0.0.13
 	github.com/pdfcpu/pdfcpu v0.13.0
 	github.com/spf13/pflag v1.0.10
 	golang.org/x/image v0.44.0
