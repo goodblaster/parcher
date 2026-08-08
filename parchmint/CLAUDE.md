@@ -1,0 +1,160 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+**parchmint** is the page archiver; **parch** is its CLI. It captures a URL as a single self-contained file that renders faithfully with no network. Browser driving and page preparation come from [pscription](../pscription) (`runner`, `pipeline.Staticize()`, `actions`, `scripts`); this repo owns everything about the resulting **file**: the capture backends and output formats, the embedded text layer, search (`find`), OCR (`ocr`), and marking/rendering (`-M`, `mark`, `render`). The line between the repos: **pscription = live pages, parchmint = files.**
+
+**Primary Language:** Go 1.24
+**Runtime requirement:** a Chrome/Chromium installation (not bundled).
+
+Local development uses the shared `go.work` one directory up, so parch always builds against the sibling pscription checkout; the go.mod pin only matters for builds outside the workspace.
+
+## Build & Run
+
+```bash
+go build -o bin/ ./cmd/...
+./bin/parch https://example.com                   # → example.com.html (native HTML backend)
+./bin/parch -f mht|pdf|png|jpeg|webp https://…
+./bin/parch --width 1280 https://…                # layout width — picks the responsive breakpoint
+./bin/parch --dpr 2 https://…                     # device pixel ratio: 2x output pixels, same layout
+./bin/parch -f pdf --paper letter https://…       # sheet size, INDEPENDENT of --width (scaled to fit)
+./bin/parch --links new-tab|disable https://…
+./bin/parch --rx login.rx https://…               # custom pscription as the prep
+./bin/parch -v https://…                          # per-step debug logs from both repos
+./bin/parch text page.html                        # plain text back out of an archive
+./bin/parch text --json page.html                 # the raw embedded text layer
+./bin/parch text --blocks page.html               # NDJSON, one paragraph block per line —
+                                                  # the export feed for external indexers
+./bin/parch lines page.html                       # one plain-text line per paragraph block
+./bin/parch find "some phrase" page.html          # block-scoped phrase search (grep-like exit codes)
+./bin/parch find --json "wild*card" page.html     # hits with boxes, machine-readable
+./bin/parch find -l -0 phrase *.html | xargs -0 … # multi-file grep over a corpus: -l/-c/-q/-m,
+                                                  # -r DIR recursive, NDJSON --json, «match» colored
+                                                  # on a TTY; also -e regex, -z fuzzy, -w/-s/-F,
+                                                  # --in td,th, --source ocr, `-` stdin, `--`
+./bin/parch -M "phrase" https://…                 # mark at capture time (repeatable; ALL backends,
+                                                  # including pdf/png — marks are pixels there).
+                                                  # --mark is the long form; --highlight is deprecated
+./bin/parch ocr page.html                         # OCR the archive's images into the text layer —
+                                                  # required only to mark text INSIDE images
+./bin/parch ocr --engine tesseract page.html      # engine choice (default: apple on macOS)
+./bin/parch mark "phrase" page.html               # mark-on-read → page.marked.html copy:
+                                                  # <mark>s for DOM text, highlights BAKED into
+                                                  # images for OCR hits (--grayscale mutes them)
+./bin/parch mark -f pdf "phrase" page.html        # …or render into any format. PDF adds invisible
+./bin/parch mark -f png --dpr 0.4 "phrase" p.html # OCR overlay text + the attached JSON layer;
+                                                  # rasters bake every mark into pixels
+./bin/parch render -f pdf --paper a4 page.html    # same rendering, no marking, no `ocr` needed
+./bin/parch render -f png --width 1024 page.html  # mark/render take --width/--dpr to RE-RENDER an
+                                                  # archive at a different size (0 = as captured)
+./bin/parch render -f mht page.html               # convert between the archive containers, both
+./bin/parch render -f html page.mht               # ways; the text layer travels with the document
+./bin/parch render -f mht --no-browser page.html  # …by rewriting the bytes: no Chrome, no reflow,
+                                                  # no network (html<->mht only)
+./bin/parch render -f mht --no-browser --fetch \
+                          saved-page.html         # …and download what the page still points at
+./bin/parch mark phone page.html --width 800      # flags may follow positionals (pflag)
+```
+
+`mark` and `render` are one operation: mark REQUIRES phrases and exits 1 when nothing matches; render takes none and only converts. Both accept `-f html|mht|pdf|png|jpeg|webp`; `mark` defaults to the archive's own container.
+
+**Local files are cross-origin to each other, and the loss is silent.** Chrome gives every file: URL its own opaque origin, so a page opened from disk cannot read the stylesheets sitting beside it — `sheet.cssRules` throws `SecurityError`. The sheets still load and still render, so nothing looks wrong until something reads the CSSOM: `inlineLinkedStylesheets` could read 11 of a browser-saved page's 37 sheets and silently dropped the other 26 from the HTML copy. `RenderArchive` sets `runner.Config.AllowFileAccess` (pscription ≥ v0.0.11, `--allow-file-access-from-files`) to put local files in one origin. It is safe THERE and not in general: the archive is a file the user asked to convert, and script execution is already disabled two lines above, so nothing in the page can use the access.
+
+**A missing text layer never blocks mark/render.** Plenty of HTML is not a parch archive — a page saved by the browser, or captured with `--text=false` — and it converts fine. `RenderOptions.ExtractLayer` indexes the loaded page during the render and the result is embedded in the output, so the copy comes out as a proper archive (with phrases, the layer is composed from the PRE-mark extraction, same rule as capture-time marking). The page's real address is recovered from the `<!-- saved from url=(NNNN)… -->` comment browsers write (`savedFromURL`), so a reindexed layer is not stuck claiming it came from a local file. `--no-browser` cannot index — there is no rendered page — so it warns and converts without one.
+
+**Leave `data:` URIs inline when packing.** Moving one into its own part and referring back to it with `cid:` is the tidier-looking design and deduplicates repeats, but those references do not resolve: a parch archive converted that way renders with every inline image a broken placeholder. Verified against a real archive with Content-ID alone, with `Content-Location: cid:…` as well (which is how Blink writes the stylesheets it stores that way), and under Blink's own `@mhtml.blink` domain — all three render broken, while the same archive with the URIs left inline renders perfectly. Blink's own cid: stylesheets do resolve in Blink's own archives; the asymmetry is unexplained, and not worth chasing when an inline data: URI always renders. Same rule inside CSS `url()`.
+
+**An MHT may not name its parts by `file:` URL.** Chrome's MHTML loader silently refuses to resolve a subresource whose `Content-Location` is a file: URL, so an archive converted from a page sitting on disk opens as bare unstyled markup — every stylesheet and image present as a part, none of them binding. `rekeyFileBase` re-keys the whole archive onto the address the page came from (`archiveBases`); without a recorded address it uses a reserved `.invalid` host rather than borrowing a real origin. Both paths need this — the browser one because Chrome names the parts, the offline one because it resolves them off the filesystem — and it is invisible in normal use, since a parch capture's parts are already `https:`. Diagnosis is by screenshot, not by inspection: the broken archive looks structurally fine (correct part count, correct bytes, zero missing resources). Chrome compounds it on such pages by rewriting `<link rel=stylesheet>` to `cid:css-…@mhtml.blink` while keying those same parts by file: URL, so 25 of 35 sheets point at parts that do not exist under that name; re-keying resolves them by location instead.
+
+**That address is provenance, never a resolution base.** `packBase` resolves relative references against the archive's own path on disk, because a browser-saved page keeps its resources in a sibling `_files/` directory that only the file path reaches. Resolving against the recorded URL instead sends every sidecar reference at the network: measured, a 50MB saved page packed to 1.2MB of nothing.
+
+**Container conversion** (`-f html` ↔ `-f mht`) goes through the browser like every other format, so it reuses `capture.MHT{}` and the document-serialization path. Two things are load-bearing: the **text layer lives in the container**, not the document — a MIME part in an .mht, a `<script>` in HTML — so a conversion must re-embed it or `parch text`/`find`/`mark` silently stop working on the result (cmd/parch/render.go does this, guarded by `textlayer.HasLayer`); and `Snapshot.FromArchive` tells backends to skip capture-time resource repair, because `RenderArchive` disables page scripts and the MHT backend's font extraction runs a `FontFaceSet` callback that then fails with "no longer runnable". `-f mht` on an .mht source is refused: the default path keeps the original container, and every part with it. `--no-browser` converts by rewriting bytes instead (`internal/convert`), which skips the reflow — it cannot render other formats, so `--width/--height/--dpr/--paper` are refused alongside it. It packs what is on disk: a browser-saved page can still point at the network for resources it never wrote out (measured: 80 of them on a saved test-site-3), and `--fetch` downloads those. Off by default, because a local format change should not reach for the network on its own; refused without `--no-browser`, where the browser fetches anyway.
+
+`pack.Options.FallbackBase` covers the rest: a reference that escapes the directory the page was saved into (`../../content/dam/x.svg`) resolves against the file on disk to somewhere nothing was ever written, and only the page's own address can supply it. The reference is re-resolved from scratch against that base — rewriting the failed file: URL cannot work, the relative path is gone by then — and the part is named after whichever address answered, which is also what the reference resolves to after re-keying, so the naming falls out for free. It is a last resort, never a preference: a resource sitting on disk is read from disk, and the failure reported is the ORIGINAL one, since that is where the resource was supposed to be.
+
+Config file precedence: CLI flags → `./.parch/config` (nearest ancestor) → `~/.parch/config` → defaults. Logs → stderr; content → stdout when piped.
+
+## Architecture
+
+- **`capture/`** — `CaptureWithOptions(ctx, url, cfg, recipe, backend, opts) → *Snapshot{URL, Title, MIME, Bytes, ViewportWidth, TextLayer}`; runs prep, text-layer extraction/highlighting, and serialization in one browser session, with layout-defect retry. Backends implement `Backend` (`Name`, `Ext`, `Action(snap)`) and **register themselves under their format name in their own file's `init`** (`capture/registry.go`): `HTML{}` (Chrome's DOM snapshot + this repo's inliner — the default), `MHT{}` (Chrome MHTML, used verbatim), `PDF{}` (printToPDF, screen media, single tall page), `Screenshot{}`/`JPEG{}`/`WebP{}` (full-page rasters). The registry exists so a backend can be added or **removed** by adding or deleting one file — it was built to make the vendored AGPL serializer retirable without touching the CLI, and it earned that (see the license note). `CarriesLayer(backend)` — a marker interface, not a list of format names in the CLI — answers which containers can hold the text layer and favicons. `RenderArchive` (capture/render.go) is the one path behind both `parch mark` and `parch render`: it loads an existing archive, optionally marks it, and hands it to a backend — or serializes the marked DOM when no backend is given. Marking is an option on rendering, not a separate operation, which is why there is no longer a `pdf` command. Its OCR strategy forks on the target: `PDF{}` gets invisible overlay text (`overlay_ocr_text.js`) plus the layer attached as an embedded file; everything else gets marks baked into image pixels (`bake_image_marks.js`), which survive any reflow or viewer.
+- **`cmd/parch/`** — CLI: flag/config layering, output naming (`{title}`/`{now}` templates), format selection. Subcommands (`text`/`find`/`ocr`/`mark`/`render`) dispatch off `os.Args[1]` before flag parsing. Flags use **[spf13/pflag](https://github.com/spf13/pflag)**, not Go's `flag`: GNU-style parsing, so `-s`/`--long` are one flag with one canonical name, flags may follow positionals (`parch mark phone report.html --width 800`), `--` ends options, and `--help` output renders `-f, --format string` with no hand-rolled formatter. Register aliases as shorthands (`StringVarP`), never as a second flag; retire spellings with `MarkDeprecated`, which keeps them parsing while hiding them from help and warning on use.
+  **Flags are looked up by their canonical LONG name** — `explicitFlags`/`pickStr` key on `"output"`, not `"o"`. Using a shorthand as the key silently reads as "not set", which once sent a whole archive to stdout instead of the output file.
+- **`textlayer/`** — the library half of `parch text`/`parch find` and the future catalog's foundation: layer parsing (`FromFile`), the versioned normalizer (`NormVersion` — NFKD accent folding, case, quote/dash unification, invisible-char bridging, hyphen splitting, CJK runes as single tokens), and block-scoped Ctrl-F-style phrase matching: a query word matches anywhere INSIDE a page word ("phone" finds iPhone — deliberately loose; keep it that way), consecutive query words match consecutive page words, and `*` bridges up to `maxGap` words ("apple*card" finds both "Apple Gift Card" and "AppleGiftCard" — internal stars carry both readings). Hits cover whole page words. Offsets are UTF-16 code units throughout (the extractor writes JavaScript string offsets). Known normalizer frontier for a future version: Traditional↔Simplified Chinese folding (書 vs 书 do not match today).
+- **`internal/ocr`** — pluggable OCR: `Engine` interface, `apple/` (macOS Vision via cgo/ObjC — darwin-only build tags with a stub elsewhere) and `tesseract/` (CLI wrapper over TSV output; a line's identity is the block/par/line triple and the TSV columns are left/top/WIDTH/HEIGHT, not x2/y2). `ocr.Default()` picks apple on darwin, tesseract elsewhere. Engines return normalized 0..1 top-left boxes. `windows/` is a deliberate NON-implementation of `Windows.Media.Ocr` (which would make `ocr` install-free on Windows as Vision does on macOS): selectable as `--engine windows` so the wiring is exercised, erroring on every call, and never returned by `Default()` — flip that only once it recognizes text. Its package doc holds the API sketch and the open questions.
+- **`internal/convert`** — browser-free html↔mht conversion, behind `parch render --no-browser`. `render` inlines an MHT's parts into one self-contained HTML file (stylesheets as `<style>` so their `url()`s can be rewritten in turn, everything else as data: URIs); `pack` walks an HTML page and builds the MIME container back. `css`/`refs` are the shared reference finders (a CSS `url()`/`@import` scanner, and the table of which element attributes name a subresource — hyperlinks deliberately excluded); `fetch` loads data:/file:/http(s) bytes. MHT parse/write comes from **[goodblaster/go-mht](https://github.com/goodblaster/go-mht)**, which owns the Blink-conventions scanner. Chrome resolves cid: stylesheets and fonts for real, so this path is the lower-fidelity option — its value is that it does not re-lay-out the page.
+- **`internal/config`** — TOML config loading and filename templating.
+- **pflag** (`github.com/spf13/pflag`, BSD-3) — GNU-style flag parsing for the CLI; see `cmd/parch/` above for why and for the canonical-name rule.
+- **pdfcpu** (`github.com/pdfcpu/pdfcpu`, pure-Go Apache-2.0) — attaches/extracts the text-layer embedded file for the PDF container (`textlayer/pdf.go`). Read via `ExtractAttachmentsRaw` (NOT `Attachments`/`ListAttachments`, which return metadata with a nil `Reader`); relaxed validation, since `printToPDF` output occasionally trips strict mode.
+- **`internal/log`** — logging seam: interface + logos-delegating default, mirroring pscription's. Binaries use goodblaster/logos as the implementation; configuring `logos.SetDefaultLogger` (as parch's main does) routes both repos' library logs.
+
+Backends read per-capture settings from the `Snapshot` (`ViewportWidth`, `DevicePixelRatio`, `PaperWidthIn`/`PaperHeightIn`) — never from globals.
+
+**Three independent size axes** — keep them separate, they were conflated once:
+- **`--width`** = CSS layout width. Decides the responsive breakpoint, so changing it *reflows* the page. On `mark`/`render` it re-renders an existing archive at a new width (default: the width it was captured at, from the layer). A reflow can change the MATCH COUNT — a wider layout renders content a narrower one hides — because marking runs against a fresh extraction, not the embedded layer.
+- **`--dpr`** = device pixel ratio (`runner.Config.DeviceScaleFactor`). Output pixels per CSS pixel; changes resolution, never layout. Recorded in the text layer's `viewport.dpr`. **This — not `--width` — is how you shrink an image while keeping the captured layout** (`--dpr 0.4` on a 2000px capture → an 800px-wide image of the same page).
+- **`--paper`** = PDF sheet size in inches, independent of layout width: the page keeps its layout and `printToPDF` *scales* it onto the sheet (`scale = paperWidthIn × 96 ÷ layoutWidthPx`, clamped to Chrome's [0.1, 2.0]). Default `auto` derives the sheet from the layout, which is why an unconfigured 1600px capture yields a 16.67in-wide page. Named sizes (letter, a4, …) carry a height and paginate normally; a bare number sets width only and keeps the single tall page.
+
+Raster encoder limits are in **device** pixels while layout metrics are in **CSS** pixels — `captureFullImage` takes `dpr` and converts, or a tall page at `--dpr 2` silently blows the WebP limit despite a safe-looking CSS height.
+
+**Favicons** (`capture/favicon.go`, `--favicon`, on by default for html/mht): the page's icon links are fetched server-side, inlined as data URIs, and written into the SERIALIZED document by the document backends — the live DOM is deliberately untouched, because both document backends rewrite the serialized document on the way out regardless. Two things are load-bearing: icons are decoration, so each fetch gets a short budget (`faviconTimeout`) and they run concurrently — a host that accepts a connection and never answers once turned a 5.8s capture into 35.7s; and the serialized HTML is edited with a quote-aware scanner (`tagEnd`/`tagAttrValue`), never a regex, because `[^>]*` cannot skip a `>` inside an attribute value and a truncated match leaves fragments behind as visible text in the archive.
+
+## Hard-won invariants (violating these caused real bugs)
+
+- **Chrome's MHTML serializer is the resource graph, and its losses are specific and measured.** It emits **no `<script>` elements at all**, so the HTML backend cannot re-run a site's JS on open (age gates re-firing when a snapshot is opened was a real bug with the previous serializer, which needed an explicit option to prevent it; here there is nothing to switch off). It walks shadow roots **including closed ones**, which a page-script serializer structurally cannot reach, but writes them as Blink's legacy `<template shadowmode>` — inert in an ordinary HTML file, so `render.reviveShadowRoot` renames it to the standard `shadowrootmode` or the content is present in the markup and renders as nothing. What it drops is state that is not in the markup: **typed form values** (`value`/`checked`/`selectedIndex` — while `<details open>` survives, because that one IS an attribute), **constructed stylesheets**, and **`<style>` elements inside a shadow root** (a `<link>` in the same place survives and its target is stored as a part — which is why the fix is to re-express shadow CSS as a `<link>` to a `data:` URL, not to inline declarations). All three are repaired in pscription's prep, never in the backend: `materialize-form-state`, `flatten-adopted-stylesheets`, `link-shadow-styles`. Adopted stylesheets were lost by the previous serializer too — that one is not a snapshot limitation, it is what every DOM serializer does with CSSOM-only state.
+- **Web fonts are the snapshot path's weak spot, and the failure is silent.** Chrome's snapshot omits CSS web fonts, so the HTML and MHT backends run `FetchAndInjectFonts` first — but that reads the CSSOM, and a cross-origin stylesheet cannot be read, so its @font-face rules are invisible. That is how test-site-2 archived without Orbitron and rendered every heading in a system fallback while nothing errored. pscription's `inline-crossorigin-css` step is the fix; when a capture looks subtly wrong in the typography, check that step's counts before anything else.
+- Chrome's WebP encoder hard-fails (empty bytes, no error) above 16383px per dimension; `captureFullImage` clamps height and warns. Zero-byte screenshots are treated as errors, never written.
+- Chrome's print pipeline paints `position:fixed` elements on EVERY page and drops fixed (parallax) backgrounds beyond the first viewport — hence `flattenFixedPositioning` and `normalizeBackgroundAttachment` before PDF/raster capture.
+- **`--profile` is single-writer.** Chrome takes a singleton lock on a user-data-dir, so concurrent parch runs sharing one `--profile` fail to start (`process_singleton_posix`) — measured: 3 parallel captures, 2 died, 1 survived. Parallel batches (`xargs -P`) must either drop `--profile` or give each worker its own copy of it. `--cache` has no such problem (3/3 concurrent runs fine), and without `--profile` every run gets a throwaway profile, so plain parallel capture is safe.
+- Prep-side invariants (dialog layering, WebGL buffer preservation, OOPIF freezing, CSP bypass) live in pscription's CLAUDE.md — read it before touching the capture flow.
+
+## Verification
+
+`scripts/check-archives.sh` captures each reference site, renders the archive with the network blackholed, and reports bytes, surviving external references, and script count. A good capture leaves at most a handful of `ext-refs` — tracking pixels, a CDN script tag, media the page never loaded (test-site-2 sits at 4; test-site-1 at 0) — so it is the **trend** that diagnoses, not the absolute number. Only a capture that produced nothing exits non-zero. Counts cannot see a blank page, so look at the PNGs too.
+
+(It replaced `compare-serializers.sh`, which A/B'd this backend against the vendored SingleFile one and pixel-diffed the two. That comparison is what justified the swap; it went away with the dependency. Worth knowing if you ever need to re-run that kind of measurement: the diff between two independent live captures is dominated by whatever the page regenerates — animated canvases measured 2–13% with nothing wrong — so the pixel number never diagnoses on its own.)
+
+**A blank region is not automatically a serializer bug, and the test for that is one command.** `-f png` photographs the LIVE prepared page, so if the blank is there too, prep destroyed the content and no backend can bring it back — go bisect the recipe with `xexp --drop <step>`. That is how test-site-2's missing hero video and review thumbnails were traced to an over-broad selector in `hide_overlays.js` (see pscription's invariants) after they had been blamed on the capture backend. To ask whether a change is a regression at all, build the old code in a throwaway worktree (`git worktree add /tmp/baseline HEAD` in both repos, plus a `go.work` naming them) and capture the same URL — cheaper than reasoning about it, and it leaves the working tree alone.
+
+`go test ./...` covers the pure-Go core: the `textlayer` normalizer/matcher (substring-with-gaps semantics, UTF-16 offset provenance, quotes/hyphens/accents/CJK, container sniffing and HTML/MHT embed round-trips) and the tesseract TSV parser. Browser-driven behavior (capture, mark, pdf) is verified end to end against the reference sites below.
+
+Reference sites: `https://www.test-site-1` (videos, product tiles), `https://test-site-2` (age gate, hero video, carousel), `https://test-site-8/wiki/test-site-7:%E9%A6%96%E9%A1%B5` (CJK, logo SVGs). For canvas/WebGL/iframe work: `https://test-site-4` (WebGL cube, strict CSP), `https://www.test-site-5` (2D chart canvases), and the MDN canvas-animations tutorial (cross-origin sample iframes in shadow DOM). Capture, then screenshot **offline** so missing embeds fail visibly:
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
+  --proxy-server="http://127.0.0.1:9" --hide-scrollbars --window-size=1600,3000 \
+  --virtual-time-budget=8000 --screenshot=out.png "file://$PWD/capture.html"
+```
+
+Good captures have ~zero `src="http` references (grep) and no `<script>` tags except `application/ld+json`. Keep `--virtual-time-budget`: sites with entry CSS animations (test-site-5 fades in from `opacity:0`) screenshot blank without it — the archive is fine, the screenshot just fired too early.
+
+## Conventions
+
+- New capture format: implement `capture.Backend` in `capture/` and call `capture.Register` from that file's `init` — the CLI needs no edit, and help text and error messages pick it up from `capture.Formats()`. Add `CarriesLayer()` if the output is a document container that can hold the text layer.
+- Error wrapping via `errors.Wrap(err, "context")` (github.com/goodblaster/errors). **`Wrap(nil, msg)` returns a NON-NIL error** — never tail-return it unguarded.
+- CLI: logs → stderr, content → stdout/file.
+- **Flags: long name canonical, short as a pflag shorthand** (`fs.StringVarP(&v, "output", "o", …)`). One meaning per letter across every subcommand — `-c` must not be *count* in one command and *color* in another. Multi-character flags take two dashes; single-character take one.
+
+## License note
+
+**Every line in this repository is original.** There is no vendored code, no copyleft obligation, and nothing that constrains distributing binaries or offering `parch` as a network service. The HTML serializer is `capture.HTML{}`: Chrome's own `Page.captureSnapshot` plus `internal/convert/render`.
+
+This was not always true. `capture/vendor/single-file-bundle.js` — [single-file-core](https://github.com/gildas-lormeau/single-file-core), AGPL-3.0-or-later — was the HTML serializer, `//go:embed`ed into every binary. It was replaced by the native backend, kept briefly behind `-tags singlefile` purely as a measurement reference, and then deleted. **Do not reintroduce it, or any third-party serializer, without deciding the licensing question first**: an AGPL dependency reaches the whole combined work, and "it's only an option" does not help while the bytes ship in the binary.
+
+## Text layer
+
+HTML and MHT archives embed the **parchmint-text/1 layer** — the page's rendered text with word-level geometry, extracted from the live page just before serialization. Format contract: [TEXTLAYER.md](TEXTLAYER.md) (read it before touching anything layer-related; blocks-as-phrase-boundary and raw-text-no-normalization are load-bearing). The extraction script lives in pscription (`scripts/extract/text_layer.js`); this repo owns the header composition, embedding (`capture/textlayer.go` for HTML's script element, `textlayer/mht.go` for MHT's base64 MIME part), and read-back (`parch text <file>`, `--json` for the raw layer — the container is sniffed from the bytes, never the extension). On by default for the HTML and MHT backends (`--text=false` to disable); graphical backends have no layer. Extraction failure degrades to a warning — a capture without a layer beats no capture. MHT quirks: index-time image pairing scans the QP-DECODED text/html part (`textlayer.MHTDocument` — the data URIs inside are identical to the HTML case after decoding), and `parch mark` keeps the source format: on an .mht it writes a .marked.mht via `textlayer.ReplaceMHTDocument` (marked document QP-encoded back into the container, every other part kept so cid: references resolve; linked stylesheets are inlined from the CSSOM first).
+
+Gotchas: anything post-processing archive bytes must not assume a closing `</body>` tag exists — the splice appends when it is absent, which is how a minifying serializer once emitted it — and the embedded JSON escapes `</` as `<\/` so it can't terminate its own script element (`json.Unmarshal` undoes it for free).
+
+**Capture-time marking** (`-M`/`--mark`, deprecated alias `--highlight`; `capture.Options.Highlight`) runs in `captureOnce` before ANY backend serializes, so marks appear in every format — as `<mark data-parchmint>` elements in HTML, as yellow pixels in pdf/png/jpeg/webp. Matching uses the same `textlayer` Go matcher as `parch find` (one matcher, by design). Applying the marks is the load-bearing subtlety: the extraction runs with `cacheRuns=true` (stashing each block's text-node segment map on `window.__pmRunCache`), and `apply_text_marks.js` wraps the matched ranges against THAT cached extraction — NOT a second walk. An earlier design re-walked to apply marks and gated per block on a text-length guard; on a page whose fonts/layout are still settling (a freshly loaded bare archive), the second walk yields different block boundaries and the guard silently dropped almost every mark (a 3.9 MB test-site-7 archive marked 5 of 383). Never reintroduce a second walk for marking. The EMBEDDED layer is the pre-mark payload — marks are inline and layout-neutral, and the layer stays authoritative. A phrase spanning inline elements is wrapped one text-node segment at a time, back-to-front, because `Range.surroundContents` cannot cross element boundaries and node splits must never invalidate pending offsets.
+
+`parch mark` (highlight-on-read) loads the archive file:// at its recorded viewport and writes a marked COPY: DOM matches via a FRESH extraction walk + the marks pass (self-consistent ids — the embedded layer's ids are NOT trusted for DOM marking, only for OCR blocks, which a fresh walk cannot see), OCR matches baked into image pixels (canvas redraw, image-relative coords, per-line merged bands) so they survive any reflow/viewer/re-render. The original archive is never modified; the marked copy's baked images no longer hash-match its embedded layer (it's a viewing artifact, not a source archive).
+
+## Planned
+
+- Normalizer v2: Traditional↔Simplified Chinese folding (query-side, so existing archives benefit without recapture).
+- Markdown export built on the text layer (blocks are already clean typed paragraphs; OCR blocks become image captions).
+- Cryptographic timestamping of archives (hash page and layer separately — OCR output is not byte-deterministic).
+- A separate catalog application over many archives: rebuildable index built from embedded layers via the `textlayer` package (cached normalized forms must record `NormVersion` and rebuild when it changes), cross-page and cross-version search, block-shingle dedup between date-stamped versions of a URL, and per-block embeddings for semantic search (in the index, never in archives).
