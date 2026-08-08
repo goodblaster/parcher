@@ -23,6 +23,12 @@
 
 set -uo pipefail
 
+here=$(cd "$(dirname "$0")" && pwd)
+root=$(cd "$here/.." && pwd)
+# Real hosts for the reference sites live in a gitignored .sites.env
+# (SITE-MAP.md explains why); without it this falls back to example.com.
+[ -f "$root/.sites.env" ] && . "$root/.sites.env"
+
 PARCH=${PARCH:-./bin/parch}
 OUTDIR=${OUTDIR:-./check-out}
 WIDTH=${WIDTH:-1600}
@@ -32,14 +38,14 @@ CHROME=${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}
 # The reference sites from CLAUDE.md: videos and product tiles, an age gate
 # and a hero carousel, CJK with logo SVGs, WebGL under a strict CSP, 2D chart
 # canvases, and cross-origin sample iframes inside shadow roots.
-DEFAULT_URLS=(
-  https://www.test-site-1
-  https://test-site-2
-  https://test-site-8/wiki/test-site-7:%E9%A6%96%E9%A1%B5
-  https://test-site-4
-  https://www.test-site-5
-  https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Basic_animations
-)
+# The reference corpus comes from .sites.env (TEST_URL_CORPUS). MDN is public
+# documentation, not a test subject, so it stays inline.
+if [ -n "${TEST_URL_CORPUS:-}" ]; then
+  read -r -a DEFAULT_URLS <<< "$TEST_URL_CORPUS"
+else
+  DEFAULT_URLS=(https://example.com)
+fi
+DEFAULT_URLS+=(https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Basic_animations)
 
 urls=("$@")
 [ ${#urls[@]} -eq 0 ] && urls=("${DEFAULT_URLS[@]}")

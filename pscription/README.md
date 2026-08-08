@@ -21,7 +21,7 @@ scripts returned. Steps are positional and run in order.
 go build -o bin/ ./cmd/...
 
 # built-in article extractor; @article auto-captures under "article"
-./bin/pscribe https://test-site-7/wiki/Web_archiving @article --only article
+./bin/pscribe https://example.com/article @article --only article
 
 # your own page-context scripts, in order, capturing named outputs
 ./bin/pscribe https://shop.com dismiss.js load-more.js prices.js:prices | jq .outputs.prices

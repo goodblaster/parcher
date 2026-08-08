@@ -8,12 +8,12 @@ stills, every resource embedded.
 Cross your eyes and it's a parchment; but it's mint perfect.
 
 ```bash
-parch https://www.test-site-1            # → test-site-1.html — one file, renders offline
-parch ocr test-site-1.html               # OCR the images in the file (cover art, charts…)
-parch find "music" test-site-1.html      # search the FILE — no browser, no network;
+parch https://www.example.com            # → example.com.html — one file, renders offline
+parch ocr example.com.html               # OCR the images in the file (cover art, charts…)
+parch find "music" example.com.html      # search the FILE — no browser, no network;
                                        #   finds "music" even inside music-service tiles
-parch mark --grayscale "music" "iphone" test-site-1.html
-                                       # → test-site-1.marked.html: every match highlighted —
+parch mark --grayscale "music" "album" example.com.html
+                                       # → example.com.marked.html: every match highlighted —
                                        #   image matches painted into the image itself
 ```
 

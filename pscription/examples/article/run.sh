@@ -7,10 +7,13 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
+# Real hosts for the reference sites live in a gitignored .sites.env
+# (SITE-MAP.md explains why); without it this falls back to example.com.
+[ -f "$root/.sites.env" ] && . "$root/.sites.env"
 pscribe="$root/bin/pscribe"
 [ -x "$pscribe" ] || (cd "$root" && go build -o bin/pscribe ./cmd/pscribe)
 
-url="${1:-https://test-site-7/wiki/Web_archiving}"
+url="${1:-${TEST_URL_ARTICLE:-https://example.com}}"
 
 # @article auto-captures under the name "article"; --only prints that value.
 # Pipe through jq for the text field if jq is installed.

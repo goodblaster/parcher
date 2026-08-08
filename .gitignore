@@ -1,0 +1,22 @@
+# Build artifacts
+/bin/
+/dist/
+*/bin/
+
+# Capture and archive outputs
+/captures/
+/check-out/
+*.mht
+*.mhtml
+*.html.bak
+
+# Real hosts behind the test-site-N labels — the mapping never ships
+.sites.env
+SITE-MAP.md
+
+# Internal planning docs — kept locally, never committed
+*-PLAN.md
+
+# Local-only reference material
+local-reference/
+.claude/settings.local.json

@@ -29,10 +29,13 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
+# Real hosts for the reference sites live in a gitignored .sites.env
+# (SITE-MAP.md explains why); without it this falls back to example.com.
+[ -f "$root/.sites.env" ] && . "$root/.sites.env"
 parch="$root/bin/parch"
 [ -x "$parch" ] || (cd "$root" && go build -o bin/parch ./cmd/parch)
 
-url="${1:-https://www.test-site-1}"
+url="${1:-${TEST_URL_TILES:-https://example.com}}"
 out=$(mktemp -d)
 archive="$out/page.html"
 
