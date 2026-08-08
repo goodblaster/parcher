@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **pscription** is a browser script-running and page-preparation library; **pscribe** is its CLI. A "pscription" (like a doctor's ℞ — Latin *recipe*, "take thou") is an ordered list of preparation steps and scripts executed against a live page. It drives headless Chrome (chromedp), runs a pipeline of named preparation steps (dismiss dialogs, defeat lazy loading, freeze videos/canvases/cross-origin iframes to stills, embed resources as data URIs), and extracts rendered text with word-level geometry (parchmint's text layer, including its capture-time highlighting and image recording).
 
-Serialization lives downstream: [parchmint](../parchmint) (binary `parch`) owns the capture backends (HTML, MHT, PDF, screenshots) and consumes this library for browser driving and prep. The line between the repos: **pscription = live pages, parchmint = files.**
+Serialization lives downstream: [parchmint](../parchmint) (binary `parch`) owns the capture backends (HTML, MHT, PDF, screenshots) and consumes this library for browser driving and prep. The line between the components: **pscription = live pages, parchmint = files.**
 
 **Primary Language:** Go 1.24
 **Runtime requirement:** a Chrome/Chromium installation (not bundled).
@@ -23,7 +23,7 @@ go build -o bin/ ./cmd/...
 
 stdout carries the JSON report (or one output raw with `--only`); logs go to stderr.
 
-`go test ./scripts/` parses every embedded script with node (skipped when node is absent) — the only automated test here, and it exists because a script that fails to PARSE is invisible at runtime: prep steps are `stepIgnoreError`, so the exception is logged once and swallowed, and the page silently loses that step's behavior. Behavior changes are still verified by building parchmint's `parch` against this checkout (go.work links them) and running its verification flow.
+`go test ./scripts/` parses every embedded script with node (skipped when node is absent) — the only automated test here, and it exists because a script that fails to PARSE is invisible at runtime: prep steps are `stepIgnoreError`, so the exception is logged once and swallowed, and the page silently loses that step's behavior. Behavior changes are still verified by building parchmint's `parch` from this repository (one module, so changes here are picked up directly) and running its verification flow.
 
 ## Architecture
 
@@ -71,7 +71,7 @@ Capture-backend invariants (encoder limits, PDF quirks, what Chrome's MHTML writ
 
 ## Verification
 
-Prep changes are exercised end-to-end through parchmint: build `parch` against this checkout (go.work links the repos) and run the reference-site verification described in parchmint's CLAUDE.md. For script-only work, `pscribe --prep staticize -v <url>` shows per-step logs and timings.
+Prep changes are exercised end-to-end through parchmint: build `parch` from this repository (one module, so changes here are picked up directly) and run the reference-site verification described in parchmint's CLAUDE.md. For script-only work, `pscribe --prep staticize -v <url>` shows per-step logs and timings.
 
 ## Conventions
 

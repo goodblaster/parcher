@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**parchmint** is the page archiver; **parch** is its CLI. It captures a URL as a single self-contained file that renders faithfully with no network. Browser driving and page preparation come from [pscription](../pscription) (`runner`, `pipeline.Staticize()`, `actions`, `scripts`); this repo owns everything about the resulting **file**: the capture backends and output formats, the embedded text layer, search (`find`), OCR (`ocr`), and marking/rendering (`-M`, `mark`, `render`). The line between the repos: **pscription = live pages, parchmint = files.**
+**parchmint** is the page archiver; **parch** is its CLI. It captures a URL as a single self-contained file that renders faithfully with no network. Browser driving and page preparation come from [pscription](../pscription) (`runner`, `pipeline.Staticize()`, `actions`, `scripts`); this component owns everything about the resulting **file**: the capture backends and output formats, the embedded text layer, search (`find`), OCR (`ocr`), and marking/rendering (`-M`, `mark`, `render`). The line between the components: **pscription = live pages, parchmint = files.**
 
 **Primary Language:** Go 1.24
 **Runtime requirement:** a Chrome/Chromium installation (not bundled).
 
-Local development uses the shared `go.work` one directory up, so parch always builds against the sibling pscription checkout; the go.mod pin only matters for builds outside the workspace.
+parch builds against the pscription packages in this repository directly — one module, so there is no workspace to configure and no version pin to bump.
 
 ## Build & Run
 
@@ -22,7 +22,7 @@ go build -o bin/ ./cmd/...
 ./bin/parch -f pdf --paper letter https://…       # sheet size, INDEPENDENT of --width (scaled to fit)
 ./bin/parch --links new-tab|disable https://…
 ./bin/parch --pscribe login.rx https://…               # custom pscription as the prep
-./bin/parch -v https://…                          # per-step debug logs from both repos
+./bin/parch -v https://…                          # per-step debug logs from both components
 ./bin/parch text page.html                        # plain text back out of an archive
 ./bin/parch text --json page.html                 # the raw embedded text layer
 ./bin/parch text --blocks page.html               # NDJSON, one paragraph block per line —
@@ -87,7 +87,7 @@ Config file precedence: CLI flags → `./.parch/config` (nearest ancestor) → `
 - **`internal/config`** — TOML config loading and filename templating.
 - **pflag** (`github.com/spf13/pflag`, BSD-3) — GNU-style flag parsing for the CLI; see `cmd/parch/` above for why and for the canonical-name rule.
 - **pdfcpu** (`github.com/pdfcpu/pdfcpu`, pure-Go Apache-2.0) — attaches/extracts the text-layer embedded file for the PDF container (`textlayer/pdf.go`). Read via `ExtractAttachmentsRaw` (NOT `Attachments`/`ListAttachments`, which return metadata with a nil `Reader`); relaxed validation, since `printToPDF` output occasionally trips strict mode.
-- **`internal/log`** — logging seam: interface + logos-delegating default, mirroring pscription's. Binaries use goodblaster/logos as the implementation; configuring `logos.SetDefaultLogger` (as parch's main does) routes both repos' library logs.
+- **`internal/log`** — logging seam: interface + logos-delegating default, mirroring pscription's. Binaries use goodblaster/logos as the implementation; configuring `logos.SetDefaultLogger` (as parch's main does) routes both components' library logs.
 
 Backends read per-capture settings from the `Snapshot` (`ViewportWidth`, `DevicePixelRatio`, `PaperWidthIn`/`PaperHeightIn`) — never from globals.
 
@@ -115,7 +115,7 @@ Raster encoder limits are in **device** pixels while layout metrics are in **CSS
 
 (It replaced `compare-serializers.sh`, which A/B'd this backend against the vendored SingleFile one and pixel-diffed the two. That comparison is what justified the swap; it went away with the dependency. Worth knowing if you ever need to re-run that kind of measurement: the diff between two independent live captures is dominated by whatever the page regenerates — animated canvases measured 2–13% with nothing wrong — so the pixel number never diagnoses on its own.)
 
-**A blank region is not automatically a serializer bug, and the test for that is one command.** `-f png` photographs the LIVE prepared page, so if the blank is there too, prep destroyed the content and no backend can bring it back — go bisect the recipe with `xexp --drop <step>`. That is how test-site-2's missing hero video and review thumbnails were traced to an over-broad selector in `hide_overlays.js` (see pscription's invariants) after they had been blamed on the capture backend. To ask whether a change is a regression at all, build the old code in a throwaway worktree (`git worktree add /tmp/baseline HEAD` in both repos, plus a `go.work` naming them) and capture the same URL — cheaper than reasoning about it, and it leaves the working tree alone.
+**A blank region is not automatically a serializer bug, and the test for that is one command.** `-f png` photographs the LIVE prepared page, so if the blank is there too, prep destroyed the content and no backend can bring it back — go bisect the recipe with `xexp --drop <step>`. That is how test-site-2's missing hero video and review thumbnails were traced to an over-broad selector in `hide_overlays.js` (see pscription's invariants) after they had been blamed on the capture backend. To ask whether a change is a regression at all, build the old code in a throwaway worktree (`git worktree add /tmp/baseline HEAD` — one repository now, so a single worktree covers both components) and capture the same URL — cheaper than reasoning about it, and it leaves the working tree alone.
 
 `go test ./...` covers the pure-Go core: the `textlayer` normalizer/matcher (substring-with-gaps semantics, UTF-16 offset provenance, quotes/hyphens/accents/CJK, container sniffing and HTML/MHT embed round-trips) and the tesseract TSV parser. Browser-driven behavior (capture, mark, pdf) is verified end to end against the reference sites below.
 

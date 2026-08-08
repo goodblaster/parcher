@@ -85,14 +85,14 @@ capture-time `-M`, so a query that finds is a query that
 highlights. Hits come with pixel coordinates (`--json`) and grep-like
 exit codes for scripting. Disable at capture with `--text=false`.
 
-Built on [pscription](https://github.com/goodblaster/pscription), which does the
+Built on [pscription](../pscription), which does the
 browser driving and page preparation; the capture backends (HTML, MHT, PDF,
 screenshots) live here.
 
 ## Requirements
 
 ```bash
-go install github.com/goodblaster/parchmint/cmd/parch@latest
+go install github.com/goodblaster/parcher/parchmint/cmd/parch@latest
 ```
 
 - **Go 1.26+** to build (the module requires it; older toolchains will

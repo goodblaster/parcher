@@ -46,7 +46,7 @@ stdout.
 
 ## The crawler-without-a-crawler pattern
 
-parch pairs with [pscribe](https://github.com/goodblaster/pscription) (the script
+parch pairs with [pscribe](../../pscription) (the script
 runner). Extract links from an index page, then archive each:
 
 ```bash
