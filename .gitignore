@@ -17,6 +17,10 @@ SITE-MAP.md
 # Internal planning docs — kept locally, never committed
 *-PLAN.md
 
+# Editor / IDE
+.idea/
+.vscode/
+
 # Local-only reference material
 local-reference/
 .claude/settings.local.json

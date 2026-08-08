@@ -16,6 +16,16 @@ go install github.com/goodblaster/parcher/parchmint/cmd/parch@latest
 go install github.com/goodblaster/parcher/pscription/cmd/pscribe@latest
 ```
 
+Or from a checkout — `make` stamps the version from git, which `go install`
+cannot do:
+
+```bash
+make          # both commands into ./bin
+make install  # both into GOBIN, version-stamped
+make test     # every test
+make help     # the rest
+```
+
 **parch** turns a live page into a file: dialogs and age gates dismissed,
 lazy content loaded, videos/canvases/cross-origin iframes frozen to stills,
 every resource embedded. **pscribe** is the preparation half on its own,
