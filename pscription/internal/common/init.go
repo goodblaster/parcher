@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"github.com/goodblaster/logos"
-	"github.com/goodblaster/pscription/internal/config"
+	"github.com/goodblaster/parcher/pscription/internal/config"
 	"github.com/joho/godotenv"
 )
 

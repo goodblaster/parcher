@@ -7,7 +7,7 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/pscription/internal/config"
+	"github.com/goodblaster/parcher/pscription/internal/config"
 )
 
 // Run loads a URL in a headless browser and executes actions with default configuration

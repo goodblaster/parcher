@@ -1,7 +1,7 @@
 package capture
 
 import (
-	"github.com/goodblaster/parchmint/textlayer"
+	"github.com/goodblaster/parcher/parchmint/textlayer"
 )
 
 // defaultOverlayColor fills the highlight behind matched OCR words in a

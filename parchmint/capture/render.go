@@ -7,11 +7,11 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/parchmint/internal/log"
-	"github.com/goodblaster/parchmint/textlayer"
-	"github.com/goodblaster/pscription/actions"
-	"github.com/goodblaster/pscription/runner"
-	js "github.com/goodblaster/pscription/scripts"
+	"github.com/goodblaster/parcher/parchmint/internal/log"
+	"github.com/goodblaster/parcher/parchmint/textlayer"
+	"github.com/goodblaster/parcher/pscription/actions"
+	"github.com/goodblaster/parcher/pscription/runner"
+	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 // RenderOptions control RenderArchive: which phrases get marked, how the

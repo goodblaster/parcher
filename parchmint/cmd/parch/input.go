@@ -4,7 +4,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/goodblaster/parchmint/textlayer"
+	"github.com/goodblaster/parcher/parchmint/textlayer"
 )
 
 // stdinName is the pseudo-path meaning "read the archive from stdin",

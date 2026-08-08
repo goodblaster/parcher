@@ -28,9 +28,9 @@ import (
 	flag "github.com/spf13/pflag"
 
 	"github.com/goodblaster/logos"
-	"github.com/goodblaster/pscription/internal/common"
-	"github.com/goodblaster/pscription/internal/log"
-	"github.com/goodblaster/pscription/pscription"
+	"github.com/goodblaster/parcher/pscription/internal/common"
+	"github.com/goodblaster/parcher/pscription/internal/log"
+	"github.com/goodblaster/parcher/pscription/pscription"
 )
 
 func main() {

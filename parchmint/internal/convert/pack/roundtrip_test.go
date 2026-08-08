@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/goodblaster/go-mht/pkg/documents"
-	"github.com/goodblaster/parchmint/internal/convert/pack"
-	"github.com/goodblaster/parchmint/internal/convert/render"
+	"github.com/goodblaster/parcher/parchmint/internal/convert/pack"
+	"github.com/goodblaster/parcher/parchmint/internal/convert/render"
 )
 
 var pixel, _ = base64.StdEncoding.DecodeString(

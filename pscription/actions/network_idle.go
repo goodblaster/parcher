@@ -7,7 +7,7 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/pscription/internal/log"
+	"github.com/goodblaster/parcher/pscription/internal/log"
 )
 
 // idleInFlight is the number of still-open requests we tolerate and still

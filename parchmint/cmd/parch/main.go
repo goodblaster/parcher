@@ -31,11 +31,11 @@ import (
 	"time"
 
 	"github.com/goodblaster/logos"
-	"github.com/goodblaster/parchmint/capture"
-	"github.com/goodblaster/parchmint/internal/config"
-	"github.com/goodblaster/pscription/pipeline"
-	"github.com/goodblaster/pscription/pscription"
-	"github.com/goodblaster/pscription/runner"
+	"github.com/goodblaster/parcher/parchmint/capture"
+	"github.com/goodblaster/parcher/parchmint/internal/config"
+	"github.com/goodblaster/parcher/pscription/pipeline"
+	"github.com/goodblaster/parcher/pscription/pscription"
+	"github.com/goodblaster/parcher/pscription/runner"
 )
 
 // Built-in defaults, used when neither a flag nor the config file sets a value.

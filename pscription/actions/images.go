@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/pscription/internal/log"
-	js "github.com/goodblaster/pscription/scripts"
+	"github.com/goodblaster/parcher/pscription/internal/log"
+	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 type EmbedResult struct {

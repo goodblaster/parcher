@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/parchmint/internal/ocr/std"
+	"github.com/goodblaster/parcher/parchmint/internal/ocr/std"
 )
 
 // Engine is the Apple Vision OCR engine; it requires macOS (the Vision

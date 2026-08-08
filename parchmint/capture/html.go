@@ -7,9 +7,9 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
 	"github.com/goodblaster/go-mht/pkg/documents"
-	"github.com/goodblaster/parchmint/internal/convert/render"
-	"github.com/goodblaster/parchmint/internal/log"
-	"github.com/goodblaster/pscription/actions"
+	"github.com/goodblaster/parcher/parchmint/internal/convert/render"
+	"github.com/goodblaster/parcher/parchmint/internal/log"
+	"github.com/goodblaster/parcher/pscription/actions"
 )
 
 func init() {

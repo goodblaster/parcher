@@ -7,7 +7,7 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/parchmint/internal/log"
+	"github.com/goodblaster/parcher/parchmint/internal/log"
 )
 
 // PDF captures the page as a PDF via Chrome's Page.printToPDF. Unlike the

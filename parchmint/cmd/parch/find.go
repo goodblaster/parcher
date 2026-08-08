@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/goodblaster/parchmint/textlayer"
+	"github.com/goodblaster/parcher/parchmint/textlayer"
 )
 
 // runFindCommand implements `parch find <query> <archive...>`: block-scoped

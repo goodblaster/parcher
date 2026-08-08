@@ -11,8 +11,8 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/pscription/internal/log"
-	js "github.com/goodblaster/pscription/scripts"
+	"github.com/goodblaster/parcher/pscription/internal/log"
+	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 // Dwell budget for a cross-origin iframe brought into the viewport: time

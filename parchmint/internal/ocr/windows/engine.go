@@ -56,7 +56,7 @@ import (
 	"io"
 
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/parchmint/internal/ocr/std"
+	"github.com/goodblaster/parcher/parchmint/internal/ocr/std"
 )
 
 // Engine is the not-yet-implemented Windows.Media.Ocr engine. It satisfies

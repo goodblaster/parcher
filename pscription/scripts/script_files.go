@@ -13,7 +13,7 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
 	"github.com/goodblaster/logos"
-	"github.com/goodblaster/pscription/internal/config"
+	"github.com/goodblaster/parcher/pscription/internal/config"
 )
 
 type ScriptFile string

@@ -4,8 +4,8 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/pscription/actions"
-	js "github.com/goodblaster/pscription/scripts"
+	"github.com/goodblaster/parcher/pscription/actions"
+	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 // Prep recipes are the reusable "get the page ready" phases a pscription

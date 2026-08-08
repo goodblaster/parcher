@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/parchmint/internal/log"
-	"github.com/goodblaster/parchmint/textlayer"
-	"github.com/goodblaster/pscription/actions"
+	"github.com/goodblaster/parcher/parchmint/internal/log"
+	"github.com/goodblaster/parcher/parchmint/textlayer"
+	"github.com/goodblaster/parcher/pscription/actions"
 )
 
 // MHT captures the page as an MHTML document (Chrome's Page.captureSnapshot).

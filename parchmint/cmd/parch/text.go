@@ -8,7 +8,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/goodblaster/parchmint/textlayer"
+	"github.com/goodblaster/parcher/parchmint/textlayer"
 )
 
 // runTextCommand implements `parch text <archive.html>`: read the embedded

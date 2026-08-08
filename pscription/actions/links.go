@@ -2,7 +2,7 @@ package actions
 
 import (
 	"github.com/chromedp/chromedp"
-	js "github.com/goodblaster/pscription/scripts"
+	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 func ExtractLinks(links *[]string) chromedp.ActionFunc {

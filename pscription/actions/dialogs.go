@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/chromedp/chromedp"
-	js "github.com/goodblaster/pscription/scripts"
+	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 func DismissPopups() chromedp.ActionFunc {

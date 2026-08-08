@@ -12,7 +12,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/logos"
-	js "github.com/goodblaster/pscription/scripts"
+	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 // relativeURLRef matches a CSS url() reference and captures the opening quote

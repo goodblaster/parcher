@@ -27,8 +27,8 @@ import (
 	"github.com/goodblaster/errors"
 	"github.com/goodblaster/go-mht/pkg/documents"
 	"github.com/goodblaster/go-mht/pkg/sections"
-	"github.com/goodblaster/parchmint/internal/convert/fetch"
-	"github.com/goodblaster/parchmint/internal/convert/refs"
+	"github.com/goodblaster/parcher/parchmint/internal/convert/fetch"
+	"github.com/goodblaster/parcher/parchmint/internal/convert/refs"
 )
 
 // Defaults applied to a zero-valued Options.

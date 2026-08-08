@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goodblaster/parchmint/capture"
-	"github.com/goodblaster/parchmint/textlayer"
-	"github.com/goodblaster/pscription/runner"
+	"github.com/goodblaster/parcher/parchmint/capture"
+	"github.com/goodblaster/parcher/parchmint/textlayer"
+	"github.com/goodblaster/parcher/pscription/runner"
 )
 
 // `parch mark` and `parch render` are the same operation with and without

@@ -25,10 +25,10 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/pscription/actions"
-	"github.com/goodblaster/pscription/pipeline"
-	"github.com/goodblaster/pscription/runner"
-	js "github.com/goodblaster/pscription/scripts"
+	"github.com/goodblaster/parcher/pscription/actions"
+	"github.com/goodblaster/parcher/pscription/pipeline"
+	"github.com/goodblaster/parcher/pscription/runner"
+	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 // StepKind distinguishes how a step's Ref is resolved.

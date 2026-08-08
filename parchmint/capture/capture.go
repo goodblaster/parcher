@@ -12,11 +12,11 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/parchmint/internal/log"
-	"github.com/goodblaster/parchmint/textlayer"
-	"github.com/goodblaster/pscription/pipeline"
-	"github.com/goodblaster/pscription/runner"
-	js "github.com/goodblaster/pscription/scripts"
+	"github.com/goodblaster/parcher/parchmint/internal/log"
+	"github.com/goodblaster/parcher/parchmint/textlayer"
+	"github.com/goodblaster/parcher/pscription/pipeline"
+	"github.com/goodblaster/parcher/pscription/runner"
+	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 // maxCaptureAttempts bounds the retry loop for pages that come out of

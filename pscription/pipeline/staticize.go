@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/pscription/actions"
-	js "github.com/goodblaster/pscription/scripts"
+	"github.com/goodblaster/parcher/pscription/actions"
+	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 // Staticize is the default page-preparation recipe: it turns a live page

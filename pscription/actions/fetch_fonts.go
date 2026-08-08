@@ -12,7 +12,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/logos"
-	js "github.com/goodblaster/pscription/scripts"
+	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 // fontFace mirrors one @font-face rule extracted from the page.

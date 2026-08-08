@@ -4,8 +4,8 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/pscription/agents"
-	"github.com/goodblaster/pscription/internal/config"
+	"github.com/goodblaster/parcher/pscription/agents"
+	"github.com/goodblaster/parcher/pscription/internal/config"
 )
 
 // Config holds configuration for the script runner

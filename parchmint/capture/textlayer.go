@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/parchmint/internal/log"
-	"github.com/goodblaster/parchmint/textlayer"
-	js "github.com/goodblaster/pscription/scripts"
+	"github.com/goodblaster/parcher/parchmint/internal/log"
+	"github.com/goodblaster/parcher/parchmint/textlayer"
+	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 // TextLayerType is the script-element type identifying the embedded text

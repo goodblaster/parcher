@@ -13,9 +13,9 @@ import (
 	"strings"
 
 	"github.com/goodblaster/go-mht/pkg/documents"
-	"github.com/goodblaster/parchmint/capture"
-	"github.com/goodblaster/parchmint/internal/convert/pack"
-	"github.com/goodblaster/parchmint/internal/convert/render"
+	"github.com/goodblaster/parcher/parchmint/capture"
+	"github.com/goodblaster/parcher/parchmint/internal/convert/pack"
+	"github.com/goodblaster/parcher/parchmint/internal/convert/render"
 )
 
 // convertOffline moves an archive between the HTML and MHT containers with

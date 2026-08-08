@@ -9,9 +9,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/goodblaster/parchmint/internal/ocr"
-	"github.com/goodblaster/parchmint/internal/ocr/std"
-	"github.com/goodblaster/parchmint/textlayer"
+	"github.com/goodblaster/parcher/parchmint/internal/ocr"
+	"github.com/goodblaster/parcher/parchmint/internal/ocr/std"
+	"github.com/goodblaster/parcher/parchmint/textlayer"
 )
 
 // runOCRCommand implements `parch ocr <archive.html>`: OCR the

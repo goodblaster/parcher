@@ -5,7 +5,7 @@ import (
 	flag "github.com/spf13/pflag"
 	"strings"
 
-	"github.com/goodblaster/parchmint/textlayer"
+	"github.com/goodblaster/parcher/parchmint/textlayer"
 )
 
 // matchFlags holds the matching-mode flags shared by the find, mark, and

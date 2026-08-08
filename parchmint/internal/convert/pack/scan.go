@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/parchmint/internal/convert/css"
-	"github.com/goodblaster/parchmint/internal/convert/refs"
+	"github.com/goodblaster/parcher/parchmint/internal/convert/css"
+	"github.com/goodblaster/parcher/parchmint/internal/convert/refs"
 	"golang.org/x/net/html"
 )
 

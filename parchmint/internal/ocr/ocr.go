@@ -4,10 +4,10 @@ import (
 	"io"
 	"runtime"
 
-	"github.com/goodblaster/parchmint/internal/ocr/apple"
-	"github.com/goodblaster/parchmint/internal/ocr/std"
-	"github.com/goodblaster/parchmint/internal/ocr/tesseract"
-	windowsocr "github.com/goodblaster/parchmint/internal/ocr/windows"
+	"github.com/goodblaster/parcher/parchmint/internal/ocr/apple"
+	"github.com/goodblaster/parcher/parchmint/internal/ocr/std"
+	"github.com/goodblaster/parcher/parchmint/internal/ocr/tesseract"
+	windowsocr "github.com/goodblaster/parcher/parchmint/internal/ocr/windows"
 )
 
 type Engine interface {
