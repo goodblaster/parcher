@@ -7,15 +7,15 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
-rx="$root/bin/rx"
-[ -x "$rx" ] || (cd "$root" && go build -o bin/rx ./cmd/rx)
+pscribe="$root/bin/pscribe"
+[ -x "$pscribe" ] || (cd "$root" && go build -o bin/pscribe ./cmd/pscribe)
 
 url="${1:-https://test-site-7/wiki/Web_archiving}"
 
 # @article auto-captures under the name "article"; --only prints that value.
 # Pipe through jq for the text field if jq is installed.
 if command -v jq >/dev/null; then
-	"$rx" "$url" @article --only article | jq -r '.title, "", .text'
+	"$pscribe" "$url" @article --only article | jq -r '.title, "", .text'
 else
-	"$rx" "$url" @article --only article
+	"$pscribe" "$url" @article --only article
 fi

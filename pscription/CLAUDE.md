@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**pscription** is a browser script-running and page-preparation library; **rx** is its CLI. A "pscription" (like a doctor's ℞ — Latin *recipe*, "take thou") is an ordered list of preparation steps and scripts executed against a live page. It drives headless Chrome (chromedp), runs a pipeline of named preparation steps (dismiss dialogs, defeat lazy loading, freeze videos/canvases/cross-origin iframes to stills, embed resources as data URIs), and extracts rendered text with word-level geometry (parchmint's text layer, including its capture-time highlighting and image recording).
+**pscription** is a browser script-running and page-preparation library; **pscribe** is its CLI. A "pscription" (like a doctor's ℞ — Latin *recipe*, "take thou") is an ordered list of preparation steps and scripts executed against a live page. It drives headless Chrome (chromedp), runs a pipeline of named preparation steps (dismiss dialogs, defeat lazy loading, freeze videos/canvases/cross-origin iframes to stills, embed resources as data URIs), and extracts rendered text with word-level geometry (parchmint's text layer, including its capture-time highlighting and image recording).
 
 Serialization lives downstream: [parchmint](../parchmint) (binary `parch`) owns the capture backends (HTML, MHT, PDF, screenshots) and consumes this library for browser driving and prep. The line between the repos: **pscription = live pages, parchmint = files.**
 
@@ -15,10 +15,10 @@ Serialization lives downstream: [parchmint](../parchmint) (binary `parch`) owns 
 
 ```bash
 go build -o bin/ ./cmd/...
-./bin/rx https://news.site @article                  # built-in article extractor
-./bin/rx https://shop.com dismiss.js prices.js:out   # your own scripts, capture "out"
-./bin/rx -r login-and-scrape.rx https://portal.site  # .rx pscription file
-./bin/rx --prep staticize -v https://example.com     # full prep, debug logging
+./bin/pscribe https://news.site @article                  # built-in article extractor
+./bin/pscribe https://shop.com dismiss.js prices.js:out   # your own scripts, capture "out"
+./bin/pscribe -r login-and-scrape.rx https://portal.site  # .rx pscription file
+./bin/pscribe --prep staticize -v https://example.com     # full prep, debug logging
 ```
 
 stdout carries the JSON report (or one output raw with `--only`); logs go to stderr.
@@ -71,7 +71,7 @@ Capture-backend invariants (encoder limits, PDF quirks, what Chrome's MHTML writ
 
 ## Verification
 
-Prep changes are exercised end-to-end through parchmint: build `parch` against this checkout (go.work links the repos) and run the reference-site verification described in parchmint's CLAUDE.md. For script-only work, `rx --prep staticize -v <url>` shows per-step logs and timings.
+Prep changes are exercised end-to-end through parchmint: build `parch` against this checkout (go.work links the repos) and run the reference-site verification described in parchmint's CLAUDE.md. For script-only work, `pscribe --prep staticize -v <url>` shows per-step logs and timings.
 
 ## Conventions
 
@@ -79,7 +79,7 @@ Prep changes are exercised end-to-end through parchmint: build `parch` against t
 - New prep behavior = a named pipeline step (JS file → `ScriptFile` constant in `scripts/embed.go` → action wrapper → step in `pipeline/staticize.go` + `Register`), not inline workflow code.
 - Scripts return a small stats object; it lands in step logs.
 - CLI: logs → stderr, content → stdout/file.
-- **Flags use [spf13/pflag](https://github.com/spf13/pflag)**, matching parchmint: long name canonical, short as a shorthand (`StringVarP(&recipe, "recipe", "r", …)`), so `-r`/`--recipe` are one flag. Multi-character flags take two dashes. pflag parses flags anywhere on the line, which is why `rx URL @links --only links` works and why no flag-reordering helper is needed.
+- **Flags use [spf13/pflag](https://github.com/spf13/pflag)**, matching parchmint: long name canonical, short as a shorthand (`StringVarP(&recipe, "recipe", "r", …)`), so `-r`/`--recipe` are one flag. Multi-character flags take two dashes. pflag parses flags anywhere on the line, which is why `pscribe URL @links --only links` works and why no flag-reordering helper is needed.
 
 ## Known cleanup remaining
 

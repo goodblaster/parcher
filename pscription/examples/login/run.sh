@@ -10,10 +10,10 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
-rx="$root/bin/rx"
-[ -x "$rx" ] || (cd "$root" && go build -o bin/rx ./cmd/rx)
+pscribe="$root/bin/pscribe"
+[ -x "$pscribe" ] || (cd "$root" && go build -o bin/pscribe ./cmd/pscribe)
 
 url="${1:-https://github.com/login}"
 
 # --show launches a visible browser so you can complete the login.
-"$rx" --show -r "$here/login.rx" "$url" --only content
+"$pscribe" --show -r "$here/login.rx" "$url" --only content

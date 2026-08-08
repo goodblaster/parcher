@@ -6,9 +6,9 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
-rx="$root/bin/rx"
-[ -x "$rx" ] || (cd "$root" && go build -o bin/rx ./cmd/rx)
+pscribe="$root/bin/pscribe"
+[ -x "$pscribe" ] || (cd "$root" && go build -o bin/pscribe ./cmd/pscribe)
 
 url="${1:-https://test-site-7/wiki/Web_archiving}"
 
-"$rx" -r "$here/headings.rx" "$url" --only headings
+"$pscribe" -r "$here/headings.rx" "$url" --only headings

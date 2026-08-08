@@ -2,7 +2,7 @@
 // preparation steps and scripts executed against a live web page, producing
 // a JSON report of what the scripts returned.
 //
-// A pscription is the recipe; running it (via the rx CLI or this package) is
+// A pscription is the recipe; running it (via the pscribe CLI or this package) is
 // filling it. Steps come in a few kinds:
 //
 //   - a built-in pipeline step by name        e.g. dismiss-popups, wait-quiet

@@ -1,4 +1,4 @@
-// A CUSTOM user script. rx runs it in the page and captures whatever it
+// A CUSTOM user script. pscribe runs it in the page and captures whatever it
 // returns. The pscription's `vars` object is passed as the first argument
 // (unused here). This one collects the page's metadata as JSON.
 //

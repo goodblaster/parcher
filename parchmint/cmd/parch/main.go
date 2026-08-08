@@ -113,7 +113,7 @@ func main() {
 	flag.StringVarP(&output, "output", "o", "", "output file; '-' for stdout (default: config filename, else derived from URL)")
 	flag.StringVarP(&format, "format", "f", defFormat, "output format: "+formatList()+" (html is a self-contained page)")
 	flag.StringVar(&links, "links", defLinks, "link policy: keep (unchanged), new-tab (external links open in a new tab), disable (links kept but unclickable)")
-	flag.StringVar(&rxFile, "rx", "", "run a .rx pscription as the prep before serializing (e.g. to log in first)")
+	flag.StringVar(&rxFile, "pscribe", "", "run a .rx pscription as the prep before serializing (e.g. to log in first)")
 	flag.StringVar(&profile, "profile", "", "persistent Chrome user-data dir; log in once and reuse the session")
 	flag.StringVar(&cache, "cache", "", "shared Chrome HTTP cache dir; reused across runs to speed up repeat loads")
 	flag.BoolVar(&headful, "show", false, "launch a visible browser (e.g. to log in at a wait:user step)")

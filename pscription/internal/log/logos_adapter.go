@@ -54,7 +54,7 @@ func (l *logosAdapter) Print(a ...any) {
 // TIME. It is this package's starting default so that a host application
 // (e.g. parch) that configures logos.SetDefaultLogger gets this library's
 // logs without needing access to this internal package. Binaries in this
-// module (rx) may still override via SetDefault.
+// module (pscribe) may still override via SetDefault.
 type logosDefault struct{}
 
 func (logosDefault) Debug(a ...any) { logos.Debug(a...) }

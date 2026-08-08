@@ -1,7 +1,7 @@
 // Collects the page's links as absolute URLs with their anchor text.
 // Same-page fragments, mailto:/tel:/javascript: are skipped. Deduplicated by
 // URL. This is the extraction half of the "crawler without a crawler"
-// pattern: `rx <index-url> extract/links.js -only links | xargs -n1 parch`.
+// pattern: `pscribe <index-url> extract/links.js -only links | xargs -n1 parch`.
 //
 // Returns an array of { url, text }.
 (() => {

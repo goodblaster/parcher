@@ -110,7 +110,7 @@ func ParseTokens(tokens []string, baseDir string) ([]Step, error) {
 
 // ParseFile reads a .rx pscription file. Format is line-oriented:
 //
-//	#!/usr/bin/env rx          shebang (ignored)
+//	#!/usr/bin/env pscribe          shebang (ignored)
 //	# comment                  ignored
 //	prep: minimal              directive
 //	headful: true              directive

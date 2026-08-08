@@ -21,7 +21,7 @@ go build -o bin/ ./cmd/...
 ./bin/parch --dpr 2 https://…                     # device pixel ratio: 2x output pixels, same layout
 ./bin/parch -f pdf --paper letter https://…       # sheet size, INDEPENDENT of --width (scaled to fit)
 ./bin/parch --links new-tab|disable https://…
-./bin/parch --rx login.rx https://…               # custom pscription as the prep
+./bin/parch --pscribe login.rx https://…               # custom pscription as the prep
 ./bin/parch -v https://…                          # per-step debug logs from both repos
 ./bin/parch text page.html                        # plain text back out of an archive
 ./bin/parch text --json page.html                 # the raw embedded text layer

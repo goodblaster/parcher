@@ -1,15 +1,15 @@
-// rx runs a pscription — an ordered list of preparation steps and scripts —
+// pscribe runs a pscription — an ordered list of preparation steps and scripts —
 // against a URL in a headless (or visible) browser, and prints a JSON report
 // of what the scripts returned. Like a doctor's ℞ (Latin recipe, "take
 // thou"): a recipe someone else executes precisely.
 //
 //	# steps given inline (order = execution order)
-//	rx https://news.site @article                       # built-in article extractor
-//	rx https://shop.com dismiss.js prices.js:prices      # your own scripts, capture "prices"
-//	rx https://site.com @links --only links | xargs parch # crawler-without-a-crawler
+//	pscribe https://news.site @article                       # built-in article extractor
+//	pscribe https://shop.com dismiss.js prices.js:prices      # your own scripts, capture "prices"
+//	pscribe https://site.com @links --only links | xargs parch # crawler-without-a-crawler
 //
 //	# steps given as a .rx pscription file
-//	rx -r login-and-scrape.rx https://portal.site
+//	pscribe -r login-and-scrape.rx https://portal.site
 //	./login-and-scrape.rx https://portal.site            # if chmod +x with a shebang
 //
 // stdout carries the JSON report (or, with --only, one output raw). Logs go to
@@ -64,7 +64,7 @@ func main() {
 	flag.BoolVarP(&verbose, "verbose", "v", false, "debug logging")
 
 	// Steps are positional and trail the URL; pflag parses flags anywhere,
-	// so `rx URL @links --only links | xargs parch` works with no
+	// so `pscribe URL @links --only links | xargs parch` works with no
 	// reordering (Go's stdlib flag package stopped at the first positional,
 	// which is why this used to need a helper).
 	_ = flag.CommandLine.Parse(os.Args[1:])
@@ -80,7 +80,7 @@ func main() {
 
 	args := flag.Args()
 
-	// Shebang form: `./thing.rx https://site` execs `rx ./thing.rx
+	// Shebang form: `./thing.rx https://site` execs `pscribe ./thing.rx
 	// https://site`, so a .rx file as the first positional means "run this
 	// pscription". Equivalent to --recipe.
 	if recipe == "" && len(args) > 0 && strings.HasSuffix(args[0], ".rx") {
@@ -197,7 +197,7 @@ func firstNonEmpty(a, b string) string {
 // die prints a clean error to stderr and exits 1 — never a Go panic/stack
 // trace (logos.Fatal panics, which is wrong for user-facing errors).
 func die(err error) {
-	fmt.Fprintln(os.Stderr, "rx: "+err.Error())
+	fmt.Fprintln(os.Stderr, "pscribe: "+err.Error())
 	os.Exit(1)
 }
 

@@ -1,5 +1,5 @@
-# A pscription used as parch's prep (parch --rx). parch runs these steps to
-# prepare the page, then serializes it. Same .rx format rx uses, so you can
+# A pscription used as parch's prep (parch --pscribe). parch runs these steps to
+# prepare the page, then serializes it. Same .rx format pscribe uses, so you can
 # mix built-in steps with your own scripts before archiving.
 #
 # staticize is the full "make it a faithful self-contained snapshot" prep;

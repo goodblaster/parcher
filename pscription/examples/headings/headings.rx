@@ -1,13 +1,13 @@
-#!/usr/bin/env rx
+#!/usr/bin/env pscribe
 #
 # A pscription file (.rx): a named, ordered list of steps run against a page.
 # Mixes a built-in step with a custom script. Lines are steps unless they're
 # a `key: value` directive.
 #
 # Run it:
-#   rx -r headings.rx <url>
-#   rx headings.rx <url>          # .rx as the first arg works too
-#   ./headings.rx <url>           # or make it executable, if rx is on PATH
+#   pscribe -r headings.rx <url>
+#   pscribe headings.rx <url>          # .rx as the first arg works too
+#   ./headings.rx <url>           # or make it executable, if pscribe is on PATH
 #
 prep: minimal
 

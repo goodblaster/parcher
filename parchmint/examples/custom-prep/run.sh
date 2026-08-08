@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Archive a page with CUSTOM preparation: parch --rx runs a .rx pscription
+# Archive a page with CUSTOM preparation: parch --pscribe runs a .rx pscription
 # (built-in steps + your own scripts) to prepare the page, then serializes
 # it. Here clean-archive.rx strips clutter before the snapshot is taken.
 #
@@ -13,5 +13,5 @@ parch="$root/bin/parch"
 url="${1:-https://example.com}"
 out=$(mktemp -d)/clean.html
 
-"$parch" --rx "$here/clean-archive.rx" -o "$out" "$url"
+"$parch" --pscribe "$here/clean-archive.rx" -o "$out" "$url"
 echo "wrote $out ($(wc -c < "$out") bytes)"

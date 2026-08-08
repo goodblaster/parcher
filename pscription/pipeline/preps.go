@@ -20,7 +20,7 @@ func None() Recipe {
 
 // Minimal readies a page for content extraction: clears dialogs, defeats
 // lazy loading, waits for images — but does NOT embed resources or freeze
-// media. This is the right default for scraping/extraction (rx), where you
+// media. This is the right default for scraping/extraction (pscribe), where you
 // want the rendered content, not a self-contained artifact.
 func Minimal() Recipe {
 	// See Staticize: the monitor is what keeps a quiet window from being a

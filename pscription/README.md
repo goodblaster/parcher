@@ -1,6 +1,6 @@
 # pscription
 
-Browser script-running tech. **rx** executes a *pscription* — an ordered
+Browser script-running tech. **pscribe** executes a *pscription* — an ordered
 list of preparation steps and scripts — against a URL in a headless
 browser, like a doctor's ℞ (Latin *recipe*: "take thou").
 
@@ -14,27 +14,27 @@ word-level geometry) that makes the archives searchable.
 
 ## Usage
 
-`rx` runs a pscription against a URL and prints a JSON report of what the
+`pscribe` runs a pscription against a URL and prints a JSON report of what the
 scripts returned. Steps are positional and run in order.
 
 ```bash
 go build -o bin/ ./cmd/...
 
 # built-in article extractor; @article auto-captures under "article"
-./bin/rx https://test-site-7/wiki/Web_archiving @article --only article
+./bin/pscribe https://test-site-7/wiki/Web_archiving @article --only article
 
 # your own page-context scripts, in order, capturing named outputs
-./bin/rx https://shop.com dismiss.js load-more.js prices.js:prices | jq .outputs.prices
+./bin/pscribe https://shop.com dismiss.js load-more.js prices.js:prices | jq .outputs.prices
 
 # crawler without a crawler
-./bin/rx https://blog.site @links --only links | jq -r '.[].url' | xargs -n1 parch
+./bin/pscribe https://blog.site @links --only links | jq -r '.[].url' | xargs -n1 parch
 
-# a .rx pscription file (or make it executable with a #!/usr/bin/env rx line)
-./bin/rx -r login-and-extract.rx https://portal.site
+# a .rx pscription file (or make it executable with a #!/usr/bin/env pscribe line)
+./bin/pscribe -r login-and-extract.rx https://portal.site
 ./login-and-extract.rx https://portal.site
 
 # log in by hand in a visible browser, then extract
-./bin/rx --show https://portal.site wait:user @article
+./bin/pscribe --show https://portal.site wait:user @article
 ```
 
 **Steps:** `<name>` a built-in step (`dismiss-popups`, `wait-quiet`, …) ·
