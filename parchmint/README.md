@@ -133,7 +133,10 @@ go install github.com/goodblaster/parcher/parchmint/cmd/parch@latest
   installed (`apt install tesseract-ocr-deu`, `tesseract-ocr-chi-sim`, …)
   — `parch ocr` says which package when one is missing, and carries on in
   English. Tesseract reads noticeably less than Apple Vision does; expect
-  roughly half the words on image-heavy pages. Everything else in the tool
+  roughly half the words on image-heavy pages. Engines are pluggable:
+  `parch ocr` hands an engine every image of the archive in one batch and
+  waits (`--timeout` bounds the wait), so an external OCR service can be
+  added as one more `--engine` without touching the command. Everything else in the tool
   works with no OCR engine present — `ocr` is the only command that reads
   text out of images.
 

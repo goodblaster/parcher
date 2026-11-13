@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
-	flag "github.com/spf13/pflag"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
+	"time"
+
+	flag "github.com/spf13/pflag"
 
 	"github.com/goodblaster/parcher/parchmint/internal/ocr"
 	"github.com/goodblaster/parcher/parchmint/internal/ocr/std"
@@ -23,14 +27,15 @@ import (
 // command is the explicit opt-in.
 func runOCRCommand(args []string) {
 	fs := flag.NewFlagSet("ocr", flag.ExitOnError)
-	engineName := fs.String("engine", ocr.Default(), "OCR engine: apple (macOS Vision) or tesseract")
+	engineName := fs.String("engine", ocr.Default(), "OCR engine: "+strings.Join(ocr.Names(), ", "))
+	timeout := fs.Int("timeout", 0, "give up after this many seconds (0 = no limit)")
 	langFlag := fs.String("lang", "", "comma-separated OCR language hints (default: the page's declared language, else en-US)")
 	minSize := fs.Int("min-size", 32, "skip images displayed smaller than this (px, either dimension)")
 	fs.IntVar(minSize, "min", 32, "deprecated spelling of --min-size")
 	_ = fs.MarkDeprecated("min", "use --min-size")
 	output := fs.StringP("output", "o", "", "write result here instead of updating the archive in place")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s ocr [--engine apple|tesseract] [--lang en-US] [-o out] <archive.html|.mht>\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s ocr [--engine %s] [--lang en-US] [-o out] <archive.html|.mht>\n\n", os.Args[0], strings.Join(ocr.Names(), "|"))
 		fmt.Fprintln(os.Stderr, "Updates the archive in place unless -o names another file.")
 		fmt.Fprintln(os.Stderr, "\nOptions:")
 		fs.PrintDefaults()
@@ -44,9 +49,16 @@ func runOCRCommand(args []string) {
 
 	die := fail
 
-	engine := ocr.New(*engineName)
-	if engine == nil {
-		usageErr(fmt.Errorf("unknown OCR engine %q (want apple or tesseract)", *engineName))
+	if *timeout < 0 {
+		usageErr(fmt.Errorf("--timeout must not be negative, got %d", *timeout))
+	}
+	if !slices.Contains(ocr.Names(), *engineName) {
+		usageErr(fmt.Errorf("unknown OCR engine %q (want one of: %s)", *engineName, strings.Join(ocr.Names(), ", ")))
+	}
+	// An engine may refuse to start — a remote one with no credentials, say.
+	engine, err := ocr.NewRecognizer(*engineName)
+	if err != nil {
+		die(err)
 	}
 
 	data, err := os.ReadFile(path)
@@ -77,13 +89,6 @@ func runOCRCommand(args []string) {
 	// re-hashing every img src the same way the extractor did.
 	byHash := imageBytesByHash(doc)
 
-	// The same image may appear at several positions; OCR each distinct
-	// image once.
-	type ocrResult struct {
-		lines []std.Line
-		err   error
-	}
-	cache := map[string]ocrResult{}
 	stats := struct{ eligible, unmatched, vector, failed, empty, blocks, words int }{}
 
 	// Re-indexing replaces earlier OCR results.
@@ -107,6 +112,13 @@ func runOCRCommand(args []string) {
 		}
 	}
 
+	// Gather every image worth reading, each distinct image once (the same
+	// one may appear at several positions), and hand the whole set to the
+	// engine in a single call: a remote engine uploads and waits for a
+	// batch, it does not want a round trip per image.
+	var batch []ocr.Image
+	queued := map[string]bool{}
+	var eligible []textlayer.Image
 	for _, img := range layer.Images {
 		if img.Box[2] < *minSize || img.Box[3] < *minSize {
 			continue
@@ -122,18 +134,44 @@ func runOCRCommand(args []string) {
 			stats.vector++
 			continue
 		}
-		res, cached := cache[img.Hash]
-		if !cached {
-			res.lines, res.err = engine.ParseBytes(ai.data, langs)
-			cache[img.Hash] = res
+		eligible = append(eligible, img)
+		if !queued[img.Hash] {
+			queued[img.Hash] = true
+			batch = append(batch, ocr.Image{ID: img.Hash, MIME: "image/" + ai.mime, Data: ai.data})
 		}
-		if res.err != nil {
+	}
+
+	ctx := context.Background()
+	if *timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(*timeout)*time.Second)
+		defer cancel()
+	}
+	results, err := engine.Recognize(ctx, batch, langs)
+	if err != nil {
+		die(fmt.Errorf("ocr engine %s: %w", engine.Name(), err))
+	}
+	byID := make(map[string]ocr.Result, len(results))
+	for _, r := range results {
+		byID[r.ID] = r
+	}
+	reported := map[string]bool{}
+
+	for _, img := range eligible {
+		res, ok := byID[img.Hash]
+		if !ok {
+			res.Err = fmt.Errorf("the engine returned no result")
+		}
+		if res.Err != nil {
 			stats.failed++
-			fmt.Fprintf(os.Stderr, "parch: ocr failed for image %s: %v\n", img.Hash, res.err)
+			if !reported[img.Hash] {
+				reported[img.Hash] = true
+				fmt.Fprintf(os.Stderr, "parch: ocr failed for image %s: %v\n", img.Hash, res.Err)
+			}
 			continue
 		}
 
-		block, ok := ocrBlock(nextID, img, res.lines)
+		block, ok := ocrBlock(nextID, img, res.Lines)
 		if !ok {
 			stats.empty++
 			continue
@@ -162,7 +200,7 @@ func runOCRCommand(args []string) {
 	}
 
 	fmt.Fprintf(os.Stderr, "%s: %d image(s) eligible, %d indexed (%d words) [engine=%s langs=%s]",
-		dest, stats.eligible, stats.blocks, stats.words, engine.String(), strings.Join(langs, ","))
+		dest, stats.eligible, stats.blocks, stats.words, engine.Name(), strings.Join(langs, ","))
 	if stats.unmatched+stats.vector+stats.failed+stats.empty > 0 {
 		fmt.Fprintf(os.Stderr, "; skipped: %d unmatched, %d vector, %d failed, %d without text",
 			stats.unmatched, stats.vector, stats.failed, stats.empty)

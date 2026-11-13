@@ -1,8 +1,12 @@
 package tesseract
 
 import (
+	"image"
+	"image/color"
 	"math"
 	"testing"
+
+	"github.com/goodblaster/parcher/parchmint/internal/ocr/std"
 )
 
 // A tesseract TSV, columns:
@@ -42,5 +46,36 @@ func TestParseTSV(t *testing.T) {
 	// Line confidence is the mean word conf, 0..1.
 	if !approx(lines[0].Confidence, (96.0+94.0)/2/100) {
 		t.Errorf("confidence %v, want %v", lines[0].Confidence, 0.95)
+	}
+}
+
+// Regression: pure red text on a pale blue ground is BRIGHTER than the
+// ground in the red channel, and tesseract's own binarization erased it. The
+// darkest-channel copy must make saturated text dark and leave the ground,
+// and transparent pixels (page background), light.
+func TestDarkestChannel(t *testing.T) {
+	src := image.NewNRGBA(image.Rect(0, 0, 3, 1))
+	src.Set(0, 0, color.NRGBA{254, 0, 0, 255})     // the text
+	src.Set(1, 0, color.NRGBA{197, 242, 245, 255}) // the ground
+	src.Set(2, 0, color.NRGBA{0, 0, 0, 0})         // transparent
+	g := darkestChannel(src)
+	if g.Pix[0] > 10 || g.Pix[1] < 190 || g.Pix[2] < 250 {
+		t.Fatalf("text %d (want dark), ground %d (want light), transparent %d (want white)", g.Pix[0], g.Pix[1], g.Pix[2])
+	}
+}
+
+// A later pass adds only words in places no earlier pass read.
+func TestMergeLines(t *testing.T) {
+	w := func(text string, left float64) std.Word {
+		return std.Word{Text: text, Left: left, Top: 0.1, Width: 0.1, Height: 0.1}
+	}
+	base := []std.Line{{Words: []std.Word{w("SERIES", 0.1)}}}
+	more := []std.Line{{Words: []std.Word{w("SERlES", 0.11), w("12", 0.5)}}}
+	got := mergeLines(base, more)
+	if len(got) != 2 || got[1].LineText != "12" || len(got[1].Words) != 1 {
+		t.Fatalf("want the re-read word dropped and the new one added, got %+v", got)
+	}
+	if !approx(got[1].Rect.Left, 0.5) {
+		t.Errorf("added line's rect not recomputed: %+v", got[1].Rect)
 	}
 }
