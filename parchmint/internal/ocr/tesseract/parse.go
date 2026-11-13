@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/goodblaster/errors"
 	"github.com/goodblaster/parcher/parchmint/internal/ocr/std"
@@ -50,31 +51,43 @@ func (engine *Engine) ParseReader(r io.Reader, langs []string) ([]std.Line, erro
 }
 
 func (engine *Engine) ParseFile(filename string, langs []string) ([]std.Line, error) {
-	var tessLangs []string
-	for _, lang := range langs {
-		tessLang := NormalizeLangCode(lang)
-		if tessLang != "" {
-			tessLangs = append(tessLangs, tessLang)
-		}
+	inst, err := installed()
+	if err != nil {
+		return nil, err
 	}
+	tessLangs := resolveLangs(langs, inst)
 
-	if len(tessLangs) == 0 {
-		tessLangs = []string{"eng"}
-	}
+	// --psm 11 (sparse text) with a per-word confidence floor. Web images are
+	// logos, banners, product shots and UI — scattered words, not a page of
+	// prose — and the page-layout modes discard most of it looking for
+	// columns. Sparse mode alone finds more but hallucinates words in photos,
+	// so low-confidence words are dropped. Measured against Apple Vision on
+	// two reference archives (share of Vision's words found / share of
+	// tesseract's words Vision agrees with):
+	//
+	//	psm 1, no floor (the old setting)   0.35 / 0.79    0.07 / 0.50
+	//	psm 11, no floor                    0.45 / 0.38    0.16 / 0.12
+	//	psm 11, conf >= 70                  0.40 / 0.91    0.12 / 0.50
+	//
+	// More found, and no more noise than before. Enlarging the image 2x or 3x
+	// first was tried and made both numbers worse. Mode 1 also needs the
+	// separate orientation model (osd), which a minimal install lacks.
+	// PARCH_TESSERACT_PSM and PARCH_TESSERACT_MIN_CONF override, for tuning.
+	args := []string{filename, "stdout", "--psm", strconv.Itoa(psm()), "-l", strings.Join(tessLangs, "+"), "tsv"}
+	cmd := exec.Command("tesseract", args...)
 
-	// Prepare the command to call Tesseract with TSV output
-	cmd := exec.Command("tesseract", filename, "stdout", "-c", "tessedit_create_tsv=1", "--psm", "1", "-l", strings.Join(tessLangs, "+"), "tsv")
-
-	// Capture the output
 	var out bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
 
-	// Run the command
-	err := cmd.Run()
-	if err != nil {
-		return nil, errors.Wrap(err, "tesseract error")
+	if err := cmd.Run(); err != nil {
+		// tesseract explains itself on stderr; "exit status 1" alone does not.
+		detail := strings.TrimSpace(stderr.String())
+		if len(detail) > 300 {
+			detail = detail[:300]
+		}
+		return nil, errors.Wrapf(err, "tesseract error: %s", detail)
 	}
 
 	// We need page width and height to normalize boxes to 0..1.
@@ -90,6 +103,86 @@ func (engine *Engine) ParseFile(filename string, langs []string) ([]std.Line, er
 	}
 
 	return lines, nil
+}
+
+func minConf() float64 {
+	if v, err := strconv.ParseFloat(os.Getenv("PARCH_TESSERACT_MIN_CONF"), 64); err == nil {
+		return v
+	}
+	return 70
+}
+
+func psm() int {
+	if v, err := strconv.Atoi(os.Getenv("PARCH_TESSERACT_PSM")); err == nil && v >= 0 && v <= 13 {
+		return v
+	}
+	return 11
+}
+
+// installed lists the language packs this tesseract has, asked once per
+// process. It is also where a missing tesseract is reported, with what to do
+// about it, instead of once per image as a bare exec error.
+var installed = sync.OnceValues(func() (map[string]bool, error) {
+	out, err := exec.Command("tesseract", "--list-langs").CombinedOutput()
+	if err != nil {
+		return nil, errors.New("the tesseract OCR engine needs the `tesseract` program on PATH " +
+			"(Debian/Ubuntu: apt install tesseract-ocr; Fedora: dnf install tesseract; macOS: brew install tesseract)")
+	}
+	langs := map[string]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, " ") { // the header line
+			continue
+		}
+		langs[line] = true
+	}
+	return langs, nil
+})
+
+var warnedMissing sync.Map
+
+// resolveLangs turns page language hints (BCP 47, as in <html lang>) into
+// the tesseract language list for one run.
+//
+// A language whose pack is not installed is dropped with a one-time note
+// naming the package to install — passing it through makes tesseract fail on
+// EVERY image, and a stock Linux install carries English only. English is
+// always included when present: whatever language a page is written in, its
+// images are full of Latin-script brand names, units and UI words, and a
+// single-language run reads those as garbage.
+func resolveLangs(hints []string, inst map[string]bool) []string {
+	var out []string
+	add := func(l string) {
+		for _, have := range out {
+			if have == l {
+				return
+			}
+		}
+		out = append(out, l)
+	}
+	for _, hint := range hints {
+		tl := NormalizeLangCode(hint)
+		if tl == "" {
+			continue
+		}
+		if !inst[tl] {
+			if _, seen := warnedMissing.LoadOrStore(tl, true); !seen {
+				fmt.Fprintf(os.Stderr, "parch: tesseract has no %q language pack for page language %q; "+
+					"text in that language will be misread (Debian/Ubuntu: apt install tesseract-ocr-%s)\n",
+					tl, hint, strings.ReplaceAll(tl, "_", "-"))
+			}
+			continue
+		}
+		add(tl)
+	}
+	if inst["eng"] {
+		add("eng")
+	}
+	if len(out) == 0 {
+		// Nothing usable is installed; let tesseract say so itself.
+		out = []string{"eng"}
+	}
+	return out
 }
 
 // parseTSV parses the TSV output from Tesseract and organizes it hierarchically
@@ -147,7 +240,7 @@ func (engine *Engine) parseTSV(tsv string, pageWidth int, pageHeight int) ([]std
 			flush()
 			lastLineKey = lineKey
 		}
-		if strings.TrimSpace(word.Text) != "" {
+		if strings.TrimSpace(word.Text) != "" && conf >= minConf() {
 			currentLine.Words = append(currentLine.Words, word)
 			if conf >= 0 {
 				confSum += conf

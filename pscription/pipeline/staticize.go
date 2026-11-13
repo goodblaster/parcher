@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/actions"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
@@ -68,16 +69,16 @@ func Staticize() Recipe {
 		// the page loads, so most banners decide they were already
 		// answered and never render.
 		PreNavigate: []PreNavFunc{
-			func(url string) chromedp.Action { return settle.Attach() },
+			func(url string) act.Action { return settle.Attach() },
 			// Site CSPs without data: in img-src silently block every data
 			// URI the prep injects — broken-image placeholders in the
 			// live-rendering backends (pdf/png/jpeg/webp).
-			func(url string) chromedp.Action { return actions.BypassCSP() },
-			func(url string) chromedp.Action { return actions.PreseedConsentCookies(url) },
-			func(url string) chromedp.Action { return actions.PreseedConsentStorage() },
+			func(url string) act.Action { return actions.BypassCSP() },
+			func(url string) act.Action { return actions.PreseedConsentCookies(url) },
+			func(url string) act.Action { return actions.PreseedConsentStorage() },
 			// WebGL drawing buffers must be preserved from the first frame
 			// or rasterize-canvases reads transparent black at capture time.
-			func(url string) chromedp.Action { return actions.ForceWebGLPreserve() },
+			func(url string) act.Action { return actions.ForceWebGLPreserve() },
 		},
 
 		Steps: []Step{
@@ -200,17 +201,17 @@ func RewriteLinksStep(mode string) Step {
 	return stepIgnoreError("rewrite-links", actions.RunScriptIgnoreError(js.RewriteLinks, nil, mode))
 }
 
-func step(name string, action chromedp.ActionFunc) Step {
+func step(name string, action act.Func) Step {
 	return Step{Name: name, Action: action}
 }
 
-func stepIgnoreError(name string, action chromedp.ActionFunc) Step {
+func stepIgnoreError(name string, action act.Func) Step {
 	return Step{Name: name, Action: action, ContinueOnError: true}
 }
 
-func pressEscape() chromedp.ActionFunc {
+func pressEscape() act.Func {
 	return func(ctx context.Context) error {
-		return chromedp.KeyEvent(fmt.Sprintf("%c", rune(27))).Do(ctx)
+		return chromedp.Do(ctx, chromedp.KeyEvent(fmt.Sprintf("%c", rune(27))))
 	}
 }
 

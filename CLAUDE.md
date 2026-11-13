@@ -14,7 +14,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 The line between them: **pscription = live pages, parchmint = files.** parchmint imports pscription (`runner`, `pipeline.Staticize()`, `actions`, `scripts`) for browser driving and page preparation; nothing goes the other way.
 
 **Primary language:** Go 1.26.
-**Runtime requirement:** a Chrome/Chromium installation (not bundled).
+**Platforms:** macOS and Linux, both built and tested in CI. Linux builds are pure Go; macOS builds use cgo for Apple Vision OCR.
+**Runtime requirement:** a Chrome/Chromium installation (not bundled). `parch ocr` on Linux also needs `tesseract`.
 
 **Read the component CLAUDE.md before changing anything inside it** — [parchmint/CLAUDE.md](parchmint/CLAUDE.md) and [pscription/CLAUDE.md](pscription/CLAUDE.md) carry the architecture and the hard-won invariants (each one records a real bug), and they are not duplicated here. Capture-backend invariants — encoder limits, PDF quirks, what Chrome's MHTML writer drops — are parchmint's; prep-side invariants — dialog layering, WebGL buffer preservation, OOPIF freezing, CSP bypass, over-hiding — are pscription's. Capture work usually touches both.
 
@@ -38,6 +39,9 @@ make test     # go test ./...
 make vet
 make lint     # vet + staticcheck + govulncheck (run via `go run`, so always built with this toolchain)
 make probe    # browser-driven probe suite on a local page — needs Chrome, no network
+make cross    # compile every release target (linux/darwin × amd64/arm64) as a build check
+make dist     # release binaries into ./dist/<os>-<arch>/
+make ocr-check  # tesseract OCR end to end on a local page — needs Chrome and tesseract
 make check    # reference-site capture check — needs Chrome and .sites.env
 make help
 ```
@@ -65,7 +69,8 @@ Local-only material also stays out of git: `local-reference/` and `*-PLAN.md` ar
 - Flags use **[spf13/pflag](https://github.com/spf13/pflag)**, not Go's `flag`: long name canonical, short registered as a shorthand (`StringVarP`), so `-o`/`--output` are one flag; flags may follow positionals; retire spellings with `MarkDeprecated`. **Look flags up by their canonical long name** — keying on a shorthand silently reads as "not set". One meaning per letter across every subcommand.
 - CLI: logs → **stderr**, content → stdout or the output file. Exit 0 success, 1 the operation failed, 2 the invocation was wrong — in both binaries.
 - **The two binaries share flag names** for everything they both have (`--recipe`, `--profile`, `--show`, `--timeout`, `--width`, `--height`, `--dpr`, `--user-agent`, `-v`). Add an option to one with the name the other already uses.
-- Dependencies: **chromedp is pinned at v0.16.x on purpose.** v0.23 is a ground-up generic API (`Action[T]`, commands as values); moving to it touches every action in pscription and is its own project with a full `make probe` + `make check` pass, not a routine bump.
+- **The browser driver is behind `pscription/act`.** A step is an `act.Func` (`func(ctx) error`); protocol commands go through `chromedp.Call(ctx, page.X, page.XParams{…})`, page script through `act.Evaluate`. chromedp's own action type used to BE this module's action type, so its v0.17+ API rewrite reached 44 files; nothing outside `act` and `runner` should name a chromedp action type again.
+- **`go.mod` pins the Go patch release, and that is a security control.** Standard-library fixes ship only in patch releases: a binary built with go1.26.0 carried 14+ known net/http, crypto/tls and crypto/x509 vulnerabilities that go1.26.11 fixes, with no dependency out of date. The `go` line makes every build fetch a patched toolchain. Raise it when `make lint` (govulncheck) reports the standard library; CI runs govulncheck on every push.
 - Each component has an `internal/log` seam that delegates to the package-level `goodblaster/logos` logger, so configuring logos once (as `parch`'s main does) routes both components' library logs.
 - New prep behavior is a named pipeline step in pscription (JS file → `ScriptFile` constant → action → step + `Register`), not inline workflow code. New capture format is a `capture.Backend` in parchmint registering itself from its own file's `init` — the CLI needs no edit.
 

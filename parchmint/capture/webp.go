@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/chromedp/cdproto/page"
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 )
 
 // WebP captures the page as a full-page WebP image. WebP is typically smaller
@@ -29,7 +29,7 @@ const webpQuality = 80
 // returns zero bytes for anything larger.
 const webpMaxDim = 16383
 
-func (WebP) Action(snap *Snapshot) chromedp.ActionFunc {
+func (WebP) Action(snap *Snapshot) act.Func {
 	return func(ctx context.Context) error {
 		// Fixed (parallax) backgrounds only paint in the first viewport of a
 		// full-page screenshot, leaving lower sections blank.

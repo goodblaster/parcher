@@ -3,7 +3,7 @@ package actions
 import (
 	"context"
 
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
@@ -14,11 +14,11 @@ type EmbedResult struct {
 	Inlined   int `json:"inlined"`
 }
 
-func ConvertToGrayscale() chromedp.ActionFunc {
+func ConvertToGrayscale() act.Func {
 	return js.ConvertToGrayscale.Action(nil)
 }
 
-func EmbedImages() chromedp.ActionFunc {
+func EmbedImages() act.Func {
 	var result EmbedResult
 	return func(ctx context.Context) error {
 		err := js.EmbedImages.Action(&result).Do(ctx)
@@ -32,7 +32,7 @@ func EmbedImages() chromedp.ActionFunc {
 	}
 }
 
-func EmbedBackgroundImages() chromedp.ActionFunc {
+func EmbedBackgroundImages() act.Func {
 	var result EmbedResult
 	return func(ctx context.Context) error {
 		err := js.EmbedBackgroundImages.Action(&result).Do(ctx)
@@ -46,6 +46,6 @@ func EmbedBackgroundImages() chromedp.ActionFunc {
 	}
 }
 
-func NormalizeViewportUnits() chromedp.ActionFunc {
+func NormalizeViewportUnits() act.Func {
 	return js.NormalizeViewportUnits.Action(nil)
 }

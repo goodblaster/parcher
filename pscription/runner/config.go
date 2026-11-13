@@ -3,7 +3,7 @@ package runner
 import (
 	"time"
 
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/config"
 )
 
@@ -48,7 +48,7 @@ type Config struct {
 
 	// Actions executed after browser setup but before navigation
 	// (cookie seeding, evaluate-on-new-document scripts, request blocking)
-	PreNavigate []chromedp.Action
+	PreNavigate []act.Action
 
 	// Headful launches a visible browser instead of headless. Required for
 	// interactive steps like wait-for-user (manual login).

@@ -1,3 +1,11 @@
+//go:build darwin && cgo
+
+// The constraint above is load-bearing: Go applies build constraints to
+// non-Go sources too, and without one this file was handed to every build.
+// Anywhere cgo is off — Linux, or a macOS cross-build — that is a hard error
+// ("Objective-C source files not allowed when not using cgo"), so the whole
+// module failed to build or vet off macOS. With it, those builds get stub.go.
+
 #import <Foundation/Foundation.h>
 #import <Vision/Vision.h>
 #import <CoreImage/CoreImage.h>

@@ -128,10 +128,20 @@ go install github.com/goodblaster/parcher/parchmint/cmd/parch@latest
   | Windows | Tesseract | `choco install tesseract` |
 
   `parch ocr` picks the platform default; `--engine tesseract` forces it
-  anywhere. Non-English pages need that language's data too
-  (`tesseract-ocr-deu` for `--lang deu`, etc.). Everything else in the
-  tool works with no OCR engine present — `index` is the only command
-  that reads text out of images.
+  anywhere. The OCR language comes from the page itself (`<html lang>`);
+  `--lang` overrides it. Non-English pages need that language's data
+  installed (`apt install tesseract-ocr-deu`, `tesseract-ocr-chi-sim`, …)
+  — `parch ocr` says which package when one is missing, and carries on in
+  English. Tesseract reads noticeably less than Apple Vision does; expect
+  roughly half the words on image-heavy pages. Everything else in the tool
+  works with no OCR engine present — `ocr` is the only command that reads
+  text out of images.
+
+- **Linux** is a first-class target: `make build` there produces pure-Go
+  binaries. If Chrome refuses to start with "No usable sandbox" (containers
+  running as root, Ubuntu 23.10+ with restricted user namespaces), either
+  fix the sandbox for your system or set `PSCRIPTION_NO_SANDBOX=1`,
+  understanding that it removes Chrome's isolation from the pages you load.
 
   **Windows could need no install either.** Windows ships
   `Windows.Media.Ocr`, which reports the word-level boxes the text layer

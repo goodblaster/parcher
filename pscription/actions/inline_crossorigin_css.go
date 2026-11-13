@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
@@ -43,12 +43,12 @@ var relativeURLRef = regexp.MustCompile(`url\(\s*(["']?)([^"')]+)["']?\s*\)`)
 //
 // Failures are logged and skipped: the <link> is left in place, so the page
 // renders exactly as it did before — just as unreadable as it was.
-func InlineCrossOriginStylesheets() chromedp.ActionFunc {
+func InlineCrossOriginStylesheets() act.Func {
 	return func(ctx context.Context) error {
 		var result struct {
 			Hrefs []string `json:"hrefs"`
 		}
-		if err := chromedp.Run(ctx, js.ListCrossOriginSheets.Action(&result)); err != nil {
+		if err := act.Run(ctx, js.ListCrossOriginSheets.Action(&result)); err != nil {
 			return fmt.Errorf("failed to list cross-origin stylesheets: %w", err)
 		}
 		if len(result.Hrefs) == 0 {
@@ -70,7 +70,7 @@ func InlineCrossOriginStylesheets() chromedp.ActionFunc {
 				Inlined bool   `json:"inlined"`
 				Reason  string `json:"reason"`
 			}
-			if err := chromedp.Run(ctx, js.InlineSheetText.Action(&res, href, absolutizeRefs(css, href))); err != nil {
+			if err := act.Run(ctx, js.InlineSheetText.Action(&res, href, absolutizeRefs(css, href))); err != nil {
 				log.With("href", href).With("reason", err.Error()).Debug("could not inline stylesheet")
 				failed++
 				continue
@@ -121,7 +121,7 @@ func fetchStylesheet(ctx context.Context, client *http.Client, href string) (str
 // stylesheet is the same one the browser was served.
 func browserUserAgent(ctx context.Context) (string, error) {
 	var ua string
-	err := chromedp.Run(ctx, chromedp.Evaluate(`navigator.userAgent`, &ua))
+	err := act.Run(ctx, act.Evaluate(`navigator.userAgent`, &ua))
 	return ua, err
 }
 

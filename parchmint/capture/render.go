@@ -2,13 +2,14 @@ package capture
 
 import (
 	"context"
+	"github.com/chromedp/chromedp"
 
 	"github.com/chromedp/cdproto/emulation"
 
-	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
 	"github.com/goodblaster/parcher/parchmint/internal/log"
 	"github.com/goodblaster/parcher/parchmint/textlayer"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/actions"
 	"github.com/goodblaster/parcher/pscription/runner"
 	js "github.com/goodblaster/parcher/pscription/scripts"
@@ -158,7 +159,10 @@ func RenderArchive(ctx context.Context, cfg runner.Config, fileURL string, phras
 	// unaffected, and archives are static documents that need no JS.
 	cfg.PreNavigate = append(cfg.PreNavigate,
 		actions.BypassCSP(),
-		emulation.SetScriptExecutionDisabled(true))
+		act.Func(func(ctx context.Context) error {
+			_, err := chromedp.Call(ctx, emulation.SetScriptExecutionDisabled, emulation.SetScriptExecutionDisabledParams{Value: true})
+			return err
+		}))
 
 	// A page saved by a browser keeps its stylesheets as separate files
 	// beside it, and Chrome gives every local file its own opaque origin —
@@ -323,12 +327,12 @@ func RenderArchive(ctx context.Context, cfg runner.Config, fileURL string, phras
 		// copy (unstyled page, hidden text visible). The CSSOM has the
 		// rules regardless of where they came from; HTML sources have no
 		// <link> sheets left, so this is a no-op there.
-		if err := chromedp.Evaluate(inlineLinkedStylesheets, nil).Do(ctx); err != nil {
+		if err := act.Evaluate(inlineLinkedStylesheets, nil).Do(ctx); err != nil {
 			log.WithError(err).Warn("could not inline stylesheets; marked copy may lose styling")
 		}
 
 		var html string
-		if err := chromedp.Evaluate(`'<!DOCTYPE html>' + document.documentElement.outerHTML`, &html).Do(ctx); err != nil {
+		if err := act.Evaluate(`'<!DOCTYPE html>' + document.documentElement.outerHTML`, &html).Do(ctx); err != nil {
 			return errors.Wrap(err, "serialize marked document")
 		}
 		res.Bytes, res.MIME = []byte(html), "text/html"

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
@@ -88,10 +88,10 @@ func (c *PrefetchCache) take(ctx context.Context, url string) (dataURL string, k
 // PrefetchImages starts fetching every image URL the page references so
 // far and returns IMMEDIATELY, leaving the downloads in flight. Pair it
 // with FetchAndInjectImagesCached later in the recipe.
-func PrefetchImages(cache *PrefetchCache) chromedp.ActionFunc {
+func PrefetchImages(cache *PrefetchCache) act.Func {
 	return func(ctx context.Context) error {
 		var urls []string
-		if err := chromedp.Run(ctx, js.ExtractImageURLs.Action(&urls)); err != nil {
+		if err := act.Run(ctx, js.ExtractImageURLs.Action(&urls)); err != nil {
 			return nil // speculative: never fail the capture
 		}
 		gate := newHostGate(perHostLimit(), maxFetchConcurrency)

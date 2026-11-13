@@ -2,7 +2,6 @@ package ocr
 
 import (
 	"io"
-	"runtime"
 
 	"github.com/goodblaster/parcher/parchmint/internal/ocr/apple"
 	"github.com/goodblaster/parcher/parchmint/internal/ocr/std"
@@ -33,8 +32,12 @@ const (
 // Windows deliberately still gets tesseract. Windows.Media.Ocr would
 // need no install there, but internal/ocr/windows is a stub that
 // recognizes nothing — switch this once it does, not before.
+//
+// "macOS" means a build that actually contains Vision: a macOS binary
+// cross-compiled without cgo has only the stub, and defaulting to an engine
+// that errors on every image would make `parch ocr` useless there.
 func Default() string {
-	if runtime.GOOS == "darwin" {
+	if apple.Available {
 		return AppleVision
 	}
 	return Tesseract

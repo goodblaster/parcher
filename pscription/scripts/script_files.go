@@ -9,9 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chromedp/cdproto/runtime"
-	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/config"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 )
@@ -46,7 +45,7 @@ func (sf ScriptFile) Source() (string, error) {
 	return string(b), nil
 }
 
-func (sf ScriptFile) Action(res any, params ...any) chromedp.ActionFunc {
+func (sf ScriptFile) Action(res any, params ...any) act.Func {
 	return func(ctx context.Context) error {
 		if config.ProfileScripts {
 			start := time.Now()
@@ -87,26 +86,11 @@ func EvalSource(ctx context.Context, source string, res any, params ...any) erro
 
 	expression := fmt.Sprintf("(%s)(%s)", source, args)
 
+	run := act.Evaluate
 	if isAsync {
-		v, exceptionDetails, err := runtime.Evaluate(expression).
-			WithAwaitPromise(true).
-			WithReturnByValue(true).
-			Do(ctx)
-		if exceptionDetails != nil {
-			return fmt.Errorf("script threw exception: %v", exceptionDetails)
-		}
-		if err != nil {
-			return errors.Wrap(err, "failed to evaluate async script")
-		}
-		if res != nil && v.Value != nil {
-			if err := json.Unmarshal(v.Value, res); err != nil {
-				return errors.Wrap(err, "failed to unmarshal script result")
-			}
-		}
-		return nil
+		run = act.EvaluateAsync
 	}
-
-	if err := chromedp.Evaluate(expression, res).Do(ctx); err != nil {
+	if err := run(expression, res)(ctx); err != nil {
 		return errors.Wrap(err, "failed to evaluate script")
 	}
 	return nil
@@ -151,7 +135,7 @@ func stripLeadingComments(s string) string {
 
 // ActionNoError runs the script like Action (including async handling and
 // dev-mode reload) but logs failures instead of returning them.
-func (sf ScriptFile) ActionNoError(res any, params ...any) chromedp.ActionFunc {
+func (sf ScriptFile) ActionNoError(res any, params ...any) act.Func {
 	return func(ctx context.Context) error {
 		if err := sf.Action(res, params...)(ctx); err != nil {
 			log.WithError(err).With("script", sf).Error("failed to evaluate script")

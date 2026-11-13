@@ -2,12 +2,14 @@ package capture
 
 import (
 	"context"
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/chromedp"
 
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
-	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
 	"github.com/goodblaster/parcher/parchmint/internal/log"
+	"github.com/goodblaster/parcher/pscription/act"
 )
 
 // PDF captures the page as a PDF via Chrome's Page.printToPDF. Unlike the
@@ -53,10 +55,10 @@ const (
 
 const cssPxPerInch = 96.0
 
-func (PDF) Action(snap *Snapshot) chromedp.ActionFunc {
+func (PDF) Action(snap *Snapshot) act.Func {
 	return func(ctx context.Context) error {
 		// Render screen styles, not the print stylesheet.
-		if err := emulation.SetEmulatedMedia().WithMedia("screen").Do(ctx); err != nil {
+		if _, err := chromedp.Call(ctx, emulation.SetEmulatedMedia, emulation.SetEmulatedMediaParams{Media: "screen"}); err != nil {
 			return errors.Wrap(err, "failed to emulate screen media")
 		}
 
@@ -76,7 +78,8 @@ func (PDF) Action(snap *Snapshot) chromedp.ActionFunc {
 		// px, and matches what printToPDF lays out — the DOM's scrollHeight
 		// can under-report, e.g. a collapsed footer, spilling content onto a
 		// spurious extra page). Small buffer absorbs sub-pixel rounding.
-		_, _, _, _, _, cssContentSize, err := page.GetLayoutMetrics().Do(ctx)
+		metrics, err := chromedp.Call(ctx, page.GetLayoutMetrics, cdp.Empty{})
+		cssContentSize := metrics.CSSContentSize
 		if err != nil {
 			return errors.Wrap(err, "failed to get layout metrics")
 		}
@@ -110,12 +113,16 @@ func (PDF) Action(snap *Snapshot) chromedp.ActionFunc {
 			}
 		}
 
-		params := page.PrintToPDF().
-			WithPrintBackground(true).
-			WithPreferCSSPageSize(false).
-			WithScale(scale).
-			WithMarginTop(0).WithMarginBottom(0).WithMarginLeft(0).WithMarginRight(0).
-			WithPaperWidth(widthIn)
+		params := page.PrintToPDFParams{
+			PrintBackground:   new(true),
+			PreferCSSPageSize: new(false),
+			Scale:             scale,
+			MarginTop:         new(0.0),
+			MarginBottom:      new(0.0),
+			MarginLeft:        new(0.0),
+			MarginRight:       new(0.0),
+			PaperWidth:        widthIn,
+		}
 
 		// Height, in three cases. The scale applies to height as well as
 		// width, so it is folded in here — a scaled-down layout needs a
@@ -124,23 +131,24 @@ func (PDF) Action(snap *Snapshot) chromedp.ActionFunc {
 		switch {
 		case snap.PaperHeightIn > 0:
 			// A real sheet was asked for (letter, a4, …): paginate onto it.
-			params = params.WithPaperHeight(snap.PaperHeightIn)
+			params.PaperHeight = snap.PaperHeightIn
 		case contentIn > 0 && contentIn <= maxPaperInches:
 			// One tall page preserves the continuous layout — no
 			// mid-content page breaks.
-			params = params.WithPaperHeight(contentIn)
+			params.PaperHeight = contentIn
 		default:
 			// Too long for one page. Chrome's own fallback is LETTER, which
 			// turns a 25-foot page into dozens of stubs; paginate tall.
 			log.With("contentIn", contentIn).With("paperHeightIn", tallPaperInches).
 				Info("content exceeds the single-page limit; paginating at a tall page height")
-			params = params.WithPaperHeight(tallPaperInches)
+			params.PaperHeight = tallPaperInches
 		}
 
-		data, _, err := params.Do(ctx)
+		printed, err := chromedp.Call(ctx, page.PrintToPDF, params)
 		if err != nil {
 			return errors.Wrap(err, "printToPDF failed")
 		}
+		data := printed.Data
 		snap.MIME = "application/pdf"
 		snap.Bytes = data
 		return nil

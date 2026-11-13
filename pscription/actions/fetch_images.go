@@ -4,24 +4,24 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 // FetchAndInjectImages extracts image URLs, fetches them server-side, and injects as data URIs
-func FetchAndInjectImages() chromedp.ActionFunc {
+func FetchAndInjectImages() act.Func {
 	return FetchAndInjectImagesCached(nil)
 }
 
 // FetchAndInjectImagesCached is FetchAndInjectImages that collects
 // anything an earlier PrefetchImages already downloaded (cache may be
 // nil, meaning fetch everything here).
-func FetchAndInjectImagesCached(cache *PrefetchCache) chromedp.ActionFunc {
+func FetchAndInjectImagesCached(cache *PrefetchCache) act.Func {
 	return func(ctx context.Context) error {
 		// Step 1: Extract all image URLs from the page
 		var urls []string
-		err := chromedp.Run(ctx, js.ExtractImageURLs.Action(&urls))
+		err := act.Run(ctx, js.ExtractImageURLs.Action(&urls))
 		if err != nil {
 			return fmt.Errorf("failed to extract image URLs: %w", err)
 		}
@@ -52,7 +52,7 @@ func FetchAndInjectImagesCached(cache *PrefetchCache) chromedp.ActionFunc {
 
 		// Step 3: Inject the fetched images back into the page
 		var result injectStats
-		err = chromedp.Run(ctx, js.InjectImages.Action(&result, urlToDataURL))
+		err = act.Run(ctx, js.InjectImages.Action(&result, urlToDataURL))
 		if err != nil {
 			return fmt.Errorf("failed to inject images: %w", err)
 		}

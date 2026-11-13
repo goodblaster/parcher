@@ -3,11 +3,11 @@ package actions
 import (
 	"context"
 
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
-func DismissPopups() chromedp.ActionFunc {
+func DismissPopups() act.Func {
 	return js.DismissPopups.Action(nil)
 }
 
@@ -18,7 +18,7 @@ type DismissTally struct{ Acted bool }
 
 // DismissCMPCounting is DismissCMP, recording whether it clicked or
 // removed anything into tally.
-func DismissCMPCounting(tally *DismissTally) chromedp.ActionFunc {
+func DismissCMPCounting(tally *DismissTally) act.Func {
 	return func(ctx context.Context) error {
 		var res struct {
 			Clicked        []string `json:"clicked"`
@@ -34,7 +34,7 @@ func DismissCMPCounting(tally *DismissTally) chromedp.ActionFunc {
 
 // DismissPopupsCounting is DismissPopups, recording whether it clicked,
 // removed, or closed anything into tally.
-func DismissPopupsCounting(tally *DismissTally) chromedp.ActionFunc {
+func DismissPopupsCounting(tally *DismissTally) act.Func {
 	return func(ctx context.Context) error {
 		var res struct {
 			Clicked       int `json:"clicked"`

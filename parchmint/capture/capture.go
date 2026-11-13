@@ -8,12 +8,14 @@ package capture
 
 import (
 	"context"
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/chromedp"
 
 	"github.com/chromedp/cdproto/page"
-	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
 	"github.com/goodblaster/parcher/parchmint/internal/log"
 	"github.com/goodblaster/parcher/parchmint/textlayer"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/pipeline"
 	"github.com/goodblaster/parcher/pscription/runner"
 	js "github.com/goodblaster/parcher/pscription/scripts"
@@ -116,7 +118,7 @@ type Backend interface {
 
 	// Action fills snap from the current browser state. It runs after the
 	// preparation recipe in the same session.
-	Action(snap *Snapshot) chromedp.ActionFunc
+	Action(snap *Snapshot) act.Func
 }
 
 // Capture loads url, runs the preparation recipe, and serializes the page
@@ -264,7 +266,7 @@ func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipe
 // state, along with the SIGNATURE of the evidence behind that verdict — see
 // the retry loop in Capture for why the evidence, not just the verdict,
 // decides whether another attempt is worth paying for.
-func detectDefect(defect *bool, signature *string) chromedp.ActionFunc {
+func detectDefect(defect *bool, signature *string) act.Func {
 	return func(ctx context.Context) error {
 		var res struct {
 			Defect    bool   `json:"defect"`
@@ -279,9 +281,9 @@ func detectDefect(defect *bool, signature *string) chromedp.ActionFunc {
 	}
 }
 
-func captureTitle(title *string) chromedp.ActionFunc {
+func captureTitle(title *string) act.Func {
 	return func(ctx context.Context) error {
-		return chromedp.Title(title).Do(ctx)
+		return act.Title(title).Do(ctx)
 	}
 }
 
@@ -295,7 +297,7 @@ func captureTitle(title *string) chromedp.ActionFunc {
 // full-page screenshots aren't paginated, so fixed elements already appear
 // once there.
 func flattenFixedPositioning(ctx context.Context) error {
-	return chromedp.Evaluate(
+	return act.Evaluate(
 		`(() => {
 			for (const el of document.querySelectorAll('body *')) {
 				if (getComputedStyle(el).position === 'fixed') {
@@ -315,7 +317,7 @@ func flattenFixedPositioning(ctx context.Context) error {
 // it. Background-attachment doesn't affect layout, so this triggers no
 // reflow.
 func normalizeBackgroundAttachment(ctx context.Context) error {
-	return chromedp.Evaluate(
+	return act.Evaluate(
 		`(() => { const s = document.createElement('style');
 			s.textContent = '*{background-attachment:scroll !important}';
 			(document.head || document.documentElement).appendChild(s); })()`,
@@ -333,7 +335,8 @@ func normalizeBackgroundAttachment(ctx context.Context) error {
 // so at dpr 2 a 9000-css-px page is an 18000-px image and blows the WebP
 // limit even though the CSS height looks safe. Zero means 1.
 func captureFullImage(ctx context.Context, format page.CaptureScreenshotFormat, quality, maxDim int64, dpr float64) ([]byte, error) {
-	_, _, _, _, _, cssContentSize, err := page.GetLayoutMetrics().Do(ctx)
+	metrics, err := chromedp.Call(ctx, page.GetLayoutMetrics, cdp.Empty{})
+	cssContentSize := metrics.CSSContentSize
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get layout metrics")
 	}
@@ -360,16 +363,17 @@ func captureFullImage(ctx context.Context, format page.CaptureScreenshotFormat, 
 		height = maxCSS
 	}
 
-	buf, err := page.CaptureScreenshot().
-		WithCaptureBeyondViewport(true).
-		WithFromSurface(true).
-		WithFormat(format).
-		WithQuality(quality).
-		WithClip(&page.Viewport{X: 0, Y: 0, Width: width, Height: height, Scale: 1}).
-		Do(ctx)
+	shot, err := chromedp.Call(ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{
+		CaptureBeyondViewport: new(true),
+		FromSurface:           new(true),
+		Format:                format,
+		Quality:               new(quality),
+		Clip:                  &page.Viewport{X: 0, Y: 0, Width: width, Height: height, Scale: 1},
+	})
 	if err != nil {
 		return nil, err
 	}
+	buf := shot.Data
 	if len(buf) == 0 {
 		return nil, errors.Newf("Chrome returned an empty %s screenshot", string(format))
 	}

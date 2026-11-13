@@ -10,6 +10,7 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
@@ -96,26 +97,27 @@ func NewSettleMonitor() *SettleMonitor {
 // cost of a continuous record, and it is why WaitForNetworkIdleQuiet no
 // longer disables the domain on its way out — doing so would silence this
 // listener.
-func (m *SettleMonitor) Attach() chromedp.ActionFunc {
+func (m *SettleMonitor) Attach() act.Func {
 	return func(ctx context.Context) error {
 		source, err := js.SettleMonitor.Source()
 		if err != nil {
 			return errors.Wrap(err, "failed to read settle monitor script")
 		}
-		if _, err := page.AddScriptToEvaluateOnNewDocument(source).Do(ctx); err != nil {
+		if _, err := chromedp.Call(ctx, page.AddScriptToEvaluateOnNewDocument, page.AddScriptToEvaluateOnNewDocumentParams{Source: source}); err != nil {
 			return errors.Wrap(err, "failed to register settle monitor script")
 		}
-		if err := network.Enable().Do(ctx); err != nil {
+		if _, err := chromedp.Call(ctx, network.Enable, network.EnableParams{}); err != nil {
 			return errors.Wrap(err, "failed to enable network domain")
 		}
 
 		// The target's own frame id, taken before navigation: it is stable
 		// for the target's lifetime, so it stays valid across every
 		// navigation and reload this capture performs.
-		tree, err := page.GetFrameTree().Do(ctx)
+		frames, err := chromedp.Call(ctx, page.GetFrameTree, cdp.Empty{})
 		if err != nil {
 			return errors.Wrap(err, "failed to read frame tree")
 		}
+		tree := frames.FrameTree
 
 		m.mu.Lock()
 		m.attached = true
@@ -129,12 +131,11 @@ func (m *SettleMonitor) Attach() chromedp.ActionFunc {
 		}
 		m.mu.Unlock()
 
-		chromedp.ListenTarget(ctx, m.handle)
-		return nil
+		return chromedp.Listen(ctx, m.handle)
 	}
 }
 
-func (m *SettleMonitor) handle(ev interface{}) {
+func (m *SettleMonitor) handle(ev any) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	switch e := ev.(type) {
@@ -185,7 +186,7 @@ func (m *SettleMonitor) inFlight() int {
 // WaitForNetworkIdle returns once the network has been quiet for the default
 // window, or the timeout elapses. Unlike the standalone action of the same
 // name, quiet that happened BEFORE the call counts.
-func (m *SettleMonitor) WaitForNetworkIdle(timeout time.Duration) chromedp.ActionFunc {
+func (m *SettleMonitor) WaitForNetworkIdle(timeout time.Duration) act.Func {
 	return m.WaitForNetworkIdleQuiet(timeout, idleQuiet)
 }
 
@@ -193,7 +194,7 @@ func (m *SettleMonitor) WaitForNetworkIdle(timeout time.Duration) chromedp.Actio
 // window. With the monitor attached the window is no longer a floor on the
 // call's cost: a page whose last request finished a second ago satisfies a
 // 250ms window immediately.
-func (m *SettleMonitor) WaitForNetworkIdleQuiet(timeout, quiet time.Duration) chromedp.ActionFunc {
+func (m *SettleMonitor) WaitForNetworkIdleQuiet(timeout, quiet time.Duration) act.Func {
 	return func(ctx context.Context) error {
 		m.mu.Lock()
 		attached := m.attached

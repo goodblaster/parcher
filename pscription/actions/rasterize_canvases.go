@@ -9,6 +9,7 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
@@ -18,7 +19,7 @@ import (
 // WebGL context the page creates so the pixels stay readable at capture
 // time. Pre-navigation action; without it WebGL canvases read back as
 // transparent black and would archive as blank rectangles.
-func ForceWebGLPreserve() chromedp.ActionFunc {
+func ForceWebGLPreserve() act.Func {
 	return func(ctx context.Context) error {
 		script, err := js.PreserveWebGLBuffer.Source()
 		if err != nil {
@@ -26,7 +27,7 @@ func ForceWebGLPreserve() chromedp.ActionFunc {
 		}
 		// The script file is a parenthesized function; invoke it.
 		source := fmt.Sprintf("(%s)();", script)
-		if _, err := page.AddScriptToEvaluateOnNewDocument(source).Do(ctx); err != nil {
+		if _, err := chromedp.Call(ctx, page.AddScriptToEvaluateOnNewDocument, page.AddScriptToEvaluateOnNewDocumentParams{Source: source}); err != nil {
 			return errors.Wrap(err, "failed to register webgl preserve script")
 		}
 		return nil
@@ -39,7 +40,7 @@ func ForceWebGLPreserve() chromedp.ActionFunc {
 // cross-origin content or driven by an OffscreenCanvas — come back marked,
 // and are captured here as CDP element screenshots, which see the
 // compositor's pixels regardless of taint.
-func RasterizeCanvases() chromedp.ActionFunc {
+func RasterizeCanvases() act.Func {
 	return func(ctx context.Context) error {
 		var stats struct {
 			Replaced    int   `json:"replaced"`
@@ -80,8 +81,8 @@ func screenshotCanvas(ctx context.Context, id int) error {
 	sctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
-	var buf []byte
-	if err := chromedp.Screenshot(sel, &buf, chromedp.ByQuery).Do(sctx); err != nil {
+	buf, err := chromedp.Run(sctx, chromedp.Screenshot(chromedp.CSS(sel)))
+	if err != nil {
 		return errors.Wrap(err, "element screenshot")
 	}
 	dataURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf)

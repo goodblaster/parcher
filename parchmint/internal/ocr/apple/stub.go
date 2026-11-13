@@ -13,6 +13,10 @@ import (
 // framework via cgo). This stub keeps other platforms compiling.
 type Engine struct{}
 
+// Available reports whether this build can use Apple Vision. False here:
+// not macOS, or macOS built without cgo (a cross-compile).
+const Available = false
+
 func (engine *Engine) String() string { return "apple" }
 
 func (engine *Engine) ParseBytes(b []byte, langs []string) ([]std.Line, error) {

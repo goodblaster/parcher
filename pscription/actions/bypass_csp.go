@@ -2,10 +2,11 @@ package actions
 
 import (
 	"context"
+	"github.com/chromedp/chromedp"
 
 	"github.com/chromedp/cdproto/page"
-	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/parcher/pscription/act"
 )
 
 // BypassCSP disables the page's Content-Security-Policy enforcement for
@@ -19,9 +20,9 @@ import (
 // webp); the DOM backends escape only because the saved file carries no
 // CSP header, so the same data URIs decode fine on reopen. test-site-4
 // (default-src 'self') is the reference case.
-func BypassCSP() chromedp.ActionFunc {
+func BypassCSP() act.Func {
 	return func(ctx context.Context) error {
-		if err := page.SetBypassCSP(true).Do(ctx); err != nil {
+		if _, err := chromedp.Call(ctx, page.SetBypassCSP, page.SetBypassCSPParams{Enabled: true}); err != nil {
 			return errors.Wrap(err, "failed to bypass CSP")
 		}
 		return nil

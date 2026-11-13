@@ -1,14 +1,14 @@
 package actions
 
 import (
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
-func ConvertSvgToPng(selector string, png *string) chromedp.ActionFunc {
+func ConvertSvgToPng(selector string, png *string) act.Func {
 	return js.ConvertSvgToPng.Action(png, selector)
 }
 
-func ConvertSvgToJpg(selector string, png *string) chromedp.ActionFunc {
+func ConvertSvgToJpg(selector string, png *string) act.Func {
 	return js.ConvertSvgToJpg.Action(png, selector)
 }

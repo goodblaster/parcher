@@ -3,8 +3,8 @@ package actions
 import (
 	"context"
 
-	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
@@ -14,7 +14,7 @@ import (
 // frames before capture. Must run BEFORE RasterizeCanvases and the
 // screenshot backends — a canvas that never painted captures as an empty
 // box everywhere.
-func WarmCanvases() chromedp.ActionFunc {
+func WarmCanvases() act.Func {
 	return func(ctx context.Context) error {
 		var stats struct {
 			Bands      int `json:"bands"`
