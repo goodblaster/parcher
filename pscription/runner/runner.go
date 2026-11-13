@@ -2,26 +2,29 @@ package runner
 
 import (
 	"context"
+	"os"
 	goruntime "runtime"
 	"strings"
 
 	"github.com/chromedp/cdproto/browser"
+	"github.com/chromedp/cdproto/cdp"
 	"github.com/goodblaster/parcher/pscription/agents"
 
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/config"
 )
 
 // Run loads a URL in a headless browser and executes actions with default configuration
-func Run(ctx context.Context, url string, actions ...chromedp.ActionFunc) error {
+func Run(ctx context.Context, url string, actions ...act.Func) error {
 	return RunWithConfig(ctx, url, DefaultConfig(), actions...)
 }
 
 // RunWithConfig loads a URL and executes actions, then closes the browser.
-func RunWithConfig(ctx context.Context, url string, cfg Config, actions ...chromedp.ActionFunc) error {
+func RunWithConfig(ctx context.Context, url string, cfg Config, actions ...act.Func) error {
 	session, err := Start(ctx, url, cfg)
 	if err != nil {
 		return err
@@ -53,11 +56,16 @@ func Start(ctx context.Context, url string, cfg Config) (*Session, error) {
 	// answer goes out from its own goroutine: listeners run on the goroutine
 	// that delivers CDP responses, so a synchronous Run here never gets its
 	// reply — an alert() during load hung the session until the timeout.
-	chromedp.ListenTarget(ctx, func(ev interface{}) {
+	if err := chromedp.Listen(ctx, func(ev any) {
 		if _, ok := ev.(*page.EventJavascriptDialogOpening); ok {
-			go func() { _ = chromedp.Run(ctx, page.HandleJavaScriptDialog(true)) }()
+			go func() {
+				_, _ = chromedp.Call(ctx, page.HandleJavaScriptDialog, page.HandleJavaScriptDialogParams{Accept: true})
+			}()
 		}
-	})
+	}); err != nil {
+		cancel()
+		return nil, errors.Wrap(err, "failed to listen for dialogs")
+	}
 
 	// A zero DeviceScaleFactor is not a valid metric override — callers
 	// that build a Config literally (rather than via DefaultConfig) would
@@ -73,18 +81,24 @@ func Start(ctx context.Context, url string, cfg Config) (*Session, error) {
 	if h <= 0 {
 		h = config.ViewHeight
 	}
-	tasks := []chromedp.Action{
+	tasks := []act.Action{
 		userAgentAction(cfg.UserAgent),
-		emulation.SetDeviceMetricsOverride(cfg.ViewportWidth, h, dpr, false),
+		act.Func(func(ctx context.Context) error {
+			_, err := chromedp.Call(ctx, emulation.SetDeviceMetricsOverride, emulation.SetDeviceMetricsOverrideParams{
+				Width: cfg.ViewportWidth, Height: h, DeviceScaleFactor: dpr, Mobile: false,
+			})
+			return err
+		}),
 	}
 	tasks = append(tasks, cfg.PreNavigate...)
 	tasks = append(tasks,
-		chromedp.Navigate(url),
-		chromedp.WaitReady(cfg.WaitFor),
-		chromedp.Sleep(cfg.InitialWait),
+		act.Func(func(ctx context.Context) error {
+			return chromedp.Do(ctx, chromedp.Navigate(url), chromedp.WaitReady(cfg.WaitFor))
+		}),
+		act.Sleep(cfg.InitialWait),
 	)
 
-	if err := chromedp.Run(ctx, tasks...); err != nil {
+	if err := act.Run(ctx, tasks...); err != nil {
 		cancel()
 		return nil, errors.Wrap(err, "failed to start browser session")
 	}
@@ -92,12 +106,12 @@ func Start(ctx context.Context, url string, cfg Config) (*Session, error) {
 }
 
 // Run executes actions against the live session.
-func (s *Session) Run(actions ...chromedp.ActionFunc) error {
-	tasks := make([]chromedp.Action, len(actions))
+func (s *Session) Run(actions ...act.Func) error {
+	tasks := make([]act.Action, len(actions))
 	for i, a := range actions {
 		tasks[i] = a
 	}
-	if err := chromedp.Run(s.ctx, tasks...); err != nil {
+	if err := act.Run(s.ctx, tasks...); err != nil {
 		return errors.Wrap(err, "failed to run browser tasks")
 	}
 	return nil
@@ -117,12 +131,18 @@ func (s *Session) Close() {
 func createBrowserContext(ctx context.Context, cfg Config) (context.Context, context.CancelFunc) {
 	ctx, cancel1 := context.WithTimeout(ctx, cfg.Timeout)
 
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", !cfg.Headful),
-	)
+	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
 	if cfg.Headful {
 		// A visible window the operator can actually use.
-		opts = append(opts, chromedp.Flag("start-maximized", true))
+		opts = append(opts, chromedp.VisibleWindow)
+	}
+	if os.Getenv("PSCRIPTION_NO_SANDBOX") != "" {
+		// Chrome refuses to start where it cannot build its sandbox: as
+		// root in a container, or on a distribution that restricts
+		// unprivileged user namespaces (Ubuntu 23.10+, which is every hosted
+		// CI runner). Opt-in only — the sandbox is what stands between a
+		// hostile page and the machine, so it is never dropped silently.
+		opts = append(opts, chromedp.NoSandbox)
 	}
 	if cfg.UserDataDir != "" {
 		// A persistent profile: session cookies and localStorage survive
@@ -156,14 +176,19 @@ func createBrowserContext(ctx context.Context, cfg Config) (context.Context, con
 // removed, plus client hints that agree with it: headless Chrome announces
 // itself as "HeadlessChrome" in both, which sites treat as a bot, and an
 // override that fixes only the string leaves sec-ch-ua contradicting it.
-func userAgentAction(explicit string) chromedp.Action {
-	return chromedp.ActionFunc(func(ctx context.Context) error {
+func userAgentAction(explicit string) act.Action {
+	set := func(ctx context.Context, params emulation.SetUserAgentOverrideParams) error {
+		_, err := chromedp.Call(ctx, emulation.SetUserAgentOverride, params)
+		return err
+	}
+	return act.Func(func(ctx context.Context) error {
 		if explicit != "" {
-			return emulation.SetUserAgentOverride(explicit).Do(ctx)
+			return set(ctx, emulation.SetUserAgentOverrideParams{UserAgent: explicit})
 		}
-		_, product, _, ua, _, err := browser.GetVersion().Do(ctx)
+		version, err := chromedp.CallBrowser(ctx, browser.GetVersion, cdp.Empty{})
+		product, ua := version.Product, version.UserAgent
 		if err != nil || ua == "" {
-			return emulation.SetUserAgentOverride(agents.Current).Do(ctx)
+			return set(ctx, emulation.SetUserAgentOverrideParams{UserAgent: agents.Current})
 		}
 		ua = strings.ReplaceAll(ua, "HeadlessChrome", "Chrome")
 
@@ -188,8 +213,9 @@ func userAgentAction(explicit string) chromedp.Action {
 			{Brand: "Google Chrome", Version: major},
 			{Brand: "Not?A_Brand", Version: "99"},
 		}
-		return emulation.SetUserAgentOverride(ua).
-			WithUserAgentMetadata(&emulation.UserAgentMetadata{
+		return set(ctx, emulation.SetUserAgentOverrideParams{
+			UserAgent: ua,
+			UserAgentMetadata: &emulation.UserAgentMetadata{
 				Brands: brands,
 				FullVersionList: []*emulation.UserAgentBrandVersion{
 					{Brand: "Chromium", Version: full},
@@ -200,8 +226,8 @@ func userAgentAction(explicit string) chromedp.Action {
 				PlatformVersion: platformVersion,
 				Architecture:    arch,
 				Bitness:         "64",
-				Model:           "",
 				Mobile:          false,
-			}).Do(ctx)
+			},
+		})
 	})
 }

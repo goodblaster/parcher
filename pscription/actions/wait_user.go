@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 )
 
 // WaitForUser pauses the pscription until the operator presses Enter. It
@@ -16,7 +16,7 @@ import (
 //
 // If stdin isn't a terminal (e.g. the run is itself scripted), it returns
 // immediately so a pscription with a wait step doesn't hang a pipeline.
-func WaitForUser(prompt string) chromedp.ActionFunc {
+func WaitForUser(prompt string) act.Func {
 	return func(ctx context.Context) error {
 		if prompt == "" {
 			prompt = "Paused. Complete any manual steps in the browser, then press Enter to continue..."

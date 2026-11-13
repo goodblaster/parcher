@@ -3,9 +3,9 @@ package capture
 import (
 	"context"
 
-	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/parcher/parchmint/internal/log"
 	"github.com/goodblaster/parcher/parchmint/textlayer"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/actions"
 	"github.com/goodblaster/parcher/pscription/pipeline"
 )
@@ -31,7 +31,7 @@ func (MHT) Name() string  { return "mht" }
 func (MHT) Ext() string   { return ".mht" }
 func (MHT) CarriesLayer() {}
 
-func (MHT) Action(snap *Snapshot) chromedp.ActionFunc {
+func (MHT) Action(snap *Snapshot) act.Func {
 	return func(ctx context.Context) error {
 		// Chrome's MHTML snapshot omits CSS web fonts, so embed the ones
 		// the page actually loaded as data: URIs first — otherwise MHT

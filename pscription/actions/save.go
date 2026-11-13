@@ -11,19 +11,20 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 )
 
-func SaveScreenshotToDisk(filename string) chromedp.ActionFunc {
+func SaveScreenshotToDisk(filename string) act.Func {
 	return func(ctx context.Context) error {
 		var err error
 		var screenshot []byte
 
 		// Let everything settle a last little bit.
-		_ = chromedp.Sleep(time.Second / 10).Do(ctx)
+		_ = act.Sleep(time.Second / 10).Do(ctx)
 
 		// Take the screenshot
-		err = chromedp.FullScreenshot(&screenshot, 100).Do(ctx)
+		screenshot, err = chromedp.Run(ctx, chromedp.FullScreenshot(100))
 		if err != nil {
 			return errors.Wrap(err, "failed to take screenshot")
 		}
@@ -39,16 +40,16 @@ func SaveScreenshotToDisk(filename string) chromedp.ActionFunc {
 	}
 }
 
-func SaveScreenshotToBase64(img *string) chromedp.ActionFunc {
+func SaveScreenshotToBase64(img *string) act.Func {
 	return func(ctx context.Context) error {
 		var err error
 		var screenshot []byte
 
 		// Let everything settle a last little bit.
-		_ = chromedp.Sleep(time.Second / 10).Do(ctx)
+		_ = act.Sleep(time.Second / 10).Do(ctx)
 
 		// Take the screenshot
-		err = chromedp.FullScreenshot(&screenshot, 100).Do(ctx)
+		screenshot, err = chromedp.Run(ctx, chromedp.FullScreenshot(100))
 		if err != nil {
 			return errors.Wrap(err, "failed to take screenshot")
 		}
@@ -59,25 +60,26 @@ func SaveScreenshotToBase64(img *string) chromedp.ActionFunc {
 	}
 }
 
-func SaveMhtToString(out *string) chromedp.ActionFunc {
+func SaveMhtToString(out *string) act.Func {
 	return func(ctx context.Context) error {
 		// Capture MIME HTML content.
-		data, err := page.CaptureSnapshot().Do(ctx)
+		snap, err := chromedp.Call(ctx, page.CaptureSnapshot, page.CaptureSnapshotParams{})
 		if err != nil {
 			return errors.Wrap(err, "failed to capture MHT snapshot")
 		}
-		*out = data
+		*out = snap.Data
 
 		return nil
 	}
 }
 
-func SaveMhtToDisk(filename string, contentLocation string) chromedp.ActionFunc {
+func SaveMhtToDisk(filename string, contentLocation string) act.Func {
 	return func(ctx context.Context) error {
-		content, err := page.CaptureSnapshot().Do(ctx)
+		snap, err := chromedp.Call(ctx, page.CaptureSnapshot, page.CaptureSnapshotParams{})
 		if err != nil {
 			return errors.Wrap(err, "failed to capture MHT snapshot")
 		}
+		content := snap.Data
 
 		content = FixContentLocation(content, contentLocation)
 
@@ -96,12 +98,13 @@ func SaveMhtToDisk(filename string, contentLocation string) chromedp.ActionFunc 
 	}
 }
 
-func SaveMht(out io.Writer) chromedp.ActionFunc {
+func SaveMht(out io.Writer) act.Func {
 	return func(ctx context.Context) error {
-		content, err := page.CaptureSnapshot().Do(ctx)
+		snap, err := chromedp.Call(ctx, page.CaptureSnapshot, page.CaptureSnapshotParams{})
 		if err != nil {
 			return errors.Wrap(err, "failed to capture MHT snapshot")
 		}
+		content := snap.Data
 
 		_, err = out.Write([]byte(content))
 		if err != nil {

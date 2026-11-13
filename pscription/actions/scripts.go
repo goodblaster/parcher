@@ -3,15 +3,15 @@ package actions
 import (
 	"context"
 
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
-func RunScript(script js.ScriptFile, res any, params ...any) chromedp.ActionFunc {
+func RunScript(script js.ScriptFile, res any, params ...any) act.Func {
 	return script.Action(res, params...)
 }
 
-func RunActions(actions ...chromedp.ActionFunc) chromedp.ActionFunc {
+func RunActions(actions ...act.Func) act.Func {
 	return func(ctx context.Context) error {
 		for _, action := range actions {
 			err := action.Do(ctx)
@@ -23,6 +23,6 @@ func RunActions(actions ...chromedp.ActionFunc) chromedp.ActionFunc {
 	}
 }
 
-func RunScriptIgnoreError(script js.ScriptFile, res any, params ...any) chromedp.ActionFunc {
+func RunScriptIgnoreError(script js.ScriptFile, res any, params ...any) act.Func {
 	return script.ActionNoError(res, params...)
 }

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/parcher/pscription/act"
 )
 
 // WaitForReady waits until the current document is fully loaded and has
@@ -13,12 +13,12 @@ import (
 // steps (an age-gate click often reloads the page): evaluation errors while
 // the old document is being torn down are treated as "not ready yet" and
 // retried until the new document settles.
-func WaitForReady(timeout time.Duration) chromedp.ActionFunc {
+func WaitForReady(timeout time.Duration) act.Func {
 	return func(ctx context.Context) error {
 		deadline := time.Now().Add(timeout)
 		for {
 			var ready bool
-			err := chromedp.Evaluate(
+			err := act.Evaluate(
 				`document.readyState === 'complete' && !!document.body && document.body.children.length > 0`,
 				&ready).Do(ctx)
 			if err == nil && ready {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 )
 
@@ -26,7 +27,7 @@ const idleQuiet = 500 * time.Millisecond
 // WaitForNetworkIdle returns once the network has been "almost idle" (at most
 // idleInFlight requests open, no start/finish activity for idleQuiet), or the
 // timeout elapses. It never fails — a timeout just means "proceed anyway".
-func WaitForNetworkIdle(timeout time.Duration) chromedp.ActionFunc {
+func WaitForNetworkIdle(timeout time.Duration) act.Func {
 	return WaitForNetworkIdleQuiet(timeout, idleQuiet)
 }
 
@@ -50,9 +51,9 @@ func nonRenderingRequest(t network.ResourceType) bool {
 // window. The window is a floor on the call's cost — an already-idle page
 // still waits it out to prove it stayed idle — so a recipe that checks
 // repeatedly can spend the full window once and less on the re-checks.
-func WaitForNetworkIdleQuiet(timeout, quiet time.Duration) chromedp.ActionFunc {
+func WaitForNetworkIdleQuiet(timeout, quiet time.Duration) act.Func {
 	return func(ctx context.Context) error {
-		if err := network.Enable().Do(ctx); err != nil {
+		if _, err := chromedp.Call(ctx, network.Enable, network.EnableParams{}); err != nil {
 			return err
 		}
 		// Deliberately NOT disabled on the way out. Enabling is idempotent
@@ -78,7 +79,7 @@ func WaitForNetworkIdleQuiet(timeout, quiet time.Duration) chromedp.ActionFunc {
 		// long ago. Their completion events must be ignored too, so the
 		// ids are remembered.
 		ignored := map[network.RequestID]bool{}
-		chromedp.ListenTarget(lctx, func(ev interface{}) {
+		_ = chromedp.Listen(lctx, func(ev any) {
 			mu.Lock()
 			defer mu.Unlock()
 			switch e := ev.(type) {

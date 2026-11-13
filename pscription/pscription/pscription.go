@@ -23,8 +23,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/actions"
 	"github.com/goodblaster/parcher/pscription/pipeline"
 	"github.com/goodblaster/parcher/pscription/runner"
@@ -142,7 +142,7 @@ func (p *Pscription) Run(ctx context.Context, url string, opts Options) (*Report
 
 	// Capture the title once the page is prepared.
 	_ = session.Run(func(c context.Context) error {
-		return chromedp.Title(&report.Title).Do(c)
+		return act.Title(&report.Title).Do(c)
 	})
 
 	// Pscription steps.
@@ -198,7 +198,7 @@ func (p *Pscription) Recipe(defaultPrep string) (pipeline.Recipe, map[string]any
 
 // buildAction turns a Step into a chromedp action, wiring script output into
 // the shared outputs map.
-func (p *Pscription) buildAction(step Step, outputs map[string]any) (chromedp.ActionFunc, error) {
+func (p *Pscription) buildAction(step Step, outputs map[string]any) (act.Func, error) {
 	switch step.Kind {
 	case KindBuiltin:
 		fn, ok := pipeline.Lookup(step.Ref)
@@ -233,7 +233,7 @@ func (p *Pscription) buildAction(step Step, outputs map[string]any) (chromedp.Ac
 
 // scriptAction evaluates a user/built-in script with vars as its argument and
 // stores the return value under out (if named).
-func (p *Pscription) scriptAction(source, out string, outputs map[string]any) chromedp.ActionFunc {
+func (p *Pscription) scriptAction(source, out string, outputs map[string]any) act.Func {
 	return func(ctx context.Context) error {
 		var result any
 		if err := js.EvalSource(ctx, source, &result, p.Vars); err != nil {
@@ -246,7 +246,7 @@ func (p *Pscription) scriptAction(source, out string, outputs map[string]any) ch
 	}
 }
 
-func (p *Pscription) waitAction(spec string) (chromedp.ActionFunc, error) {
+func (p *Pscription) waitAction(spec string) (act.Func, error) {
 	if spec == "user" {
 		return actions.WaitForUser(""), nil
 	}
@@ -255,11 +255,11 @@ func (p *Pscription) waitAction(spec string) (chromedp.ActionFunc, error) {
 		return nil, errors.Wrapf(err, "bad wait spec %q (want 'user' or a duration like 2s)", spec)
 	}
 	return func(ctx context.Context) error {
-		return chromedp.Sleep(d).Do(ctx)
+		return act.Sleep(d).Do(ctx)
 	}, nil
 }
 
-func runTimed(session *runner.Session, name string, action chromedp.ActionFunc) StepResult {
+func runTimed(session *runner.Session, name string, action act.Func) StepResult {
 	start := time.Now()
 	err := session.Run(action)
 	res := StepResult{Name: name, Ms: time.Since(start).Milliseconds(), OK: err == nil}

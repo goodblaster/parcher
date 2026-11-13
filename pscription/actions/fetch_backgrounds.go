@@ -8,18 +8,18 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/agents"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
 // FetchAndInjectBackgrounds extracts background image URLs, fetches them server-side, and injects as data URIs
-func FetchAndInjectBackgrounds() chromedp.ActionFunc {
+func FetchAndInjectBackgrounds() act.Func {
 	return func(ctx context.Context) error {
 		// Step 1: Extract all background image URLs from the page
 		var urls []string
-		err := chromedp.Run(ctx, js.ExtractBackgroundURLs.Action(&urls))
+		err := act.Run(ctx, js.ExtractBackgroundURLs.Action(&urls))
 		if err != nil {
 			return fmt.Errorf("failed to extract background URLs: %w", err)
 		}
@@ -42,7 +42,7 @@ func FetchAndInjectBackgrounds() chromedp.ActionFunc {
 
 		// Step 3: Inject the fetched images back into the page
 		var result injectStats
-		err = chromedp.Run(ctx, js.InjectBackgroundImages.Action(&result, urlToDataURL))
+		err = act.Run(ctx, js.InjectBackgroundImages.Action(&result, urlToDataURL))
 		if err != nil {
 			return fmt.Errorf("failed to inject background images: %w", err)
 		}

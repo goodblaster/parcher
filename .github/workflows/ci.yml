@@ -10,7 +10,13 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Both platforms the project ships for. macOS builds with cgo (Apple
+    # Vision OCR); Linux builds without it and uses tesseract.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -23,15 +29,34 @@ jobs:
       # Pure-Go tests plus the node parse check over every embedded script.
       - run: make test
       - run: make build
+      # Every release target must at least compile from here.
+      - run: make cross
 
   probe:
     # Drives a real Chrome against a local page: hidden-text classification,
     # `hidden`-attribute survival, inline-style backgrounds, mark --hidden.
     runs-on: ubuntu-latest
+    env:
+      # Hosted runners restrict unprivileged user namespaces, so Chrome cannot
+      # build its sandbox there and refuses to start.
+      PSCRIPTION_NO_SANDBOX: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - uses: browser-actions/setup-chrome@v1
+      - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
       - run: make probe
+      # The Linux OCR path end to end: capture a page whose only text is in
+      # an image, OCR it with tesseract, find the word.
+      - run: make ocr-check
+
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/chromedp/cdproto/page"
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 )
 
 // JPEG captures the page as a full-page JPEG. It's much smaller than the PNG
@@ -27,7 +27,7 @@ const jpegQuality = 85
 // jpegMaxDim is JPEG's per-dimension limit (16 bits).
 const jpegMaxDim = 65535
 
-func (JPEG) Action(snap *Snapshot) chromedp.ActionFunc {
+func (JPEG) Action(snap *Snapshot) act.Func {
 	return func(ctx context.Context) error {
 		// Fixed (parallax) backgrounds only paint in the first viewport of a
 		// full-page screenshot, leaving lower sections blank.

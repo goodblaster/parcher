@@ -8,7 +8,7 @@ import (
 	neturl "net/url"
 	"strings"
 
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
@@ -35,10 +35,10 @@ type fontFace struct {
 // It can only see faces it can READ: a cross-origin stylesheet throws on
 // cssRules and contributes nothing, so InlineCrossOriginStylesheets has to
 // run first or whole typefaces go missing without a word.
-func FetchAndInjectFonts() chromedp.ActionFunc {
+func FetchAndInjectFonts() act.Func {
 	return func(ctx context.Context) error {
 		var faces []fontFace
-		if err := chromedp.Run(ctx, js.ExtractFontFaces.Action(&faces)); err != nil {
+		if err := act.Run(ctx, js.ExtractFontFaces.Action(&faces)); err != nil {
 			return fmt.Errorf("failed to extract font faces: %w", err)
 		}
 		if len(faces) == 0 {
@@ -89,7 +89,7 @@ func FetchAndInjectFonts() chromedp.ActionFunc {
 
 		// Inject as a single late <style> so these data: sources win the
 		// cascade over the original external @font-face rules.
-		return chromedp.Run(ctx, js.InjectCss.Action(nil, "gb-embedded-fonts", css.String()))
+		return act.Run(ctx, js.InjectCss.Action(nil, "gb-embedded-fonts", css.String()))
 	}
 }
 

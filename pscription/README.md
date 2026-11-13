@@ -71,7 +71,8 @@ scripts/extraction. Serialization to archive formats lives in
 - `pipeline/` — named steps composed into recipes; `Staticize()`; a step
   registry that will back the `.rx` file format
 - `pscription/` — the `.rx` file format: parsing, prep selection, outputs
-- `actions/` — composable chromedp building blocks
+- `act/` — the action type and browser helpers everything else is built on
+- `actions/` — composable building blocks
 - `scripts/` — embedded page-context JavaScript ([SCRIPTS.md](SCRIPTS.md))
 
 Dialog clearing is layered, strongest first: consent/age-gate state is

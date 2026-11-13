@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/chromedp/chromedp"
 	"io"
 	"mime"
 	"net/http"
@@ -15,8 +16,8 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/network"
-	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/parcher/pscription/act"
 )
 
 const (
@@ -123,7 +124,7 @@ func discoverFavicons(ctx context.Context) (faviconDiscovery, error) {
 	})()`
 
 	var discovery faviconDiscovery
-	if err := chromedp.Evaluate(script, &discovery).Do(ctx); err != nil {
+	if err := act.Evaluate(script, &discovery).Do(ctx); err != nil {
 		return faviconDiscovery{}, errors.Wrap(err, "discover favicon links")
 	}
 	return discovery, nil
@@ -177,7 +178,8 @@ func faviconCookieHeaders(ctx context.Context, candidates []faviconCandidate) ma
 		if _, done := headers[c.URL]; done {
 			continue
 		}
-		cookies, err := network.GetCookies().WithURLs([]string{c.URL}).Do(ctx)
+		got, err := chromedp.Call(ctx, network.GetCookies, network.GetCookiesParams{URLs: []string{c.URL}})
+		cookies := got.Cookies
 		if err != nil || len(cookies) == 0 {
 			continue
 		}

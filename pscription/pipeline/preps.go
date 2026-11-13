@@ -3,7 +3,7 @@ package pipeline
 import (
 	"time"
 
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/actions"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
@@ -30,9 +30,9 @@ func Minimal() Recipe {
 	return Recipe{
 		Name: "minimal",
 		PreNavigate: []PreNavFunc{
-			func(url string) chromedp.Action { return settle.Attach() },
-			func(url string) chromedp.Action { return actions.PreseedConsentCookies(url) },
-			func(url string) chromedp.Action { return actions.PreseedConsentStorage() },
+			func(url string) act.Action { return settle.Attach() },
+			func(url string) act.Action { return actions.PreseedConsentCookies(url) },
+			func(url string) act.Action { return actions.PreseedConsentStorage() },
 		},
 		Steps: []Step{
 			stepIgnoreError("hide-overlays", actions.RunScriptIgnoreError(js.HideOverlays, nil)),

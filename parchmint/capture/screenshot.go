@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 )
 
 // Screenshot captures the page as a full-page PNG.
@@ -16,7 +17,7 @@ func init() {
 func (Screenshot) Name() string { return "screenshot" }
 func (Screenshot) Ext() string  { return ".png" }
 
-func (Screenshot) Action(snap *Snapshot) chromedp.ActionFunc {
+func (Screenshot) Action(snap *Snapshot) act.Func {
 	return func(ctx context.Context) error {
 		// Fixed (parallax) backgrounds only paint in the first viewport of a
 		// full-page screenshot, leaving lower sections blank.
@@ -24,7 +25,8 @@ func (Screenshot) Action(snap *Snapshot) chromedp.ActionFunc {
 			return err
 		}
 		var buf []byte
-		if err := chromedp.FullScreenshot(&buf, 100).Do(ctx); err != nil {
+		buf, err := chromedp.Run(ctx, chromedp.FullScreenshot(100))
+		if err != nil {
 			return err
 		}
 		snap.MIME = "image/png"

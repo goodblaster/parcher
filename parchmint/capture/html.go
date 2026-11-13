@@ -4,11 +4,11 @@ import (
 	"context"
 	"strings"
 
-	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
 	"github.com/goodblaster/go-mht/pkg/documents"
 	"github.com/goodblaster/parcher/parchmint/internal/convert/render"
 	"github.com/goodblaster/parcher/parchmint/internal/log"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/actions"
 	"github.com/goodblaster/parcher/pscription/pipeline"
 )
@@ -55,7 +55,7 @@ func (HTML) Name() string  { return "html" }
 func (HTML) Ext() string   { return ".html" }
 func (HTML) CarriesLayer() {}
 
-func (HTML) Action(snap *Snapshot) chromedp.ActionFunc {
+func (HTML) Action(snap *Snapshot) act.Func {
 	return func(ctx context.Context) error {
 		// Chrome's snapshot omits CSS web fonts, so the ones the page
 		// actually loaded are embedded as data: URIs first — otherwise the

@@ -10,7 +10,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/chromedp/chromedp"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 )
 
@@ -20,7 +20,7 @@ type Step struct {
 	Name string
 
 	// Action performs the work.
-	Action chromedp.ActionFunc
+	Action act.Func
 
 	// ContinueOnError logs the step's error and moves on instead of
 	// aborting the recipe.
@@ -30,7 +30,7 @@ type Step struct {
 // PreNavFunc builds a pre-navigation action for the target URL. These run
 // before the page exists — cookie seeding, evaluate-on-new-document
 // scripts, request blocking.
-type PreNavFunc func(url string) chromedp.Action
+type PreNavFunc func(url string) act.Action
 
 // Recipe is an ordered list of steps, optionally with pre-navigation setup.
 type Recipe struct {
@@ -40,8 +40,8 @@ type Recipe struct {
 }
 
 // PreNavigateActions materializes the pre-navigation actions for url.
-func (r Recipe) PreNavigateActions(url string) []chromedp.Action {
-	out := make([]chromedp.Action, 0, len(r.PreNavigate))
+func (r Recipe) PreNavigateActions(url string) []act.Action {
+	out := make([]act.Action, 0, len(r.PreNavigate))
 	for _, fn := range r.PreNavigate {
 		out = append(out, fn(url))
 	}
@@ -62,7 +62,7 @@ func (r Recipe) Append(steps ...Step) Recipe {
 
 // Action returns the whole recipe as a single chromedp action, so a recipe
 // can run anywhere an action can (runner.Run, another recipe, ...).
-func (r Recipe) Action() chromedp.ActionFunc {
+func (r Recipe) Action() act.Func {
 	return func(ctx context.Context) error {
 		for _, step := range r.Steps {
 			start := time.Now()
@@ -83,7 +83,7 @@ func (r Recipe) Action() chromedp.ActionFunc {
 }
 
 // NamedStep wraps an action as a named step (ContinueOnError false).
-func NamedStep(name string, action chromedp.ActionFunc) Step {
+func NamedStep(name string, action act.Func) Step {
 	return Step{Name: name, Action: action}
 }
 
@@ -93,7 +93,7 @@ func Sleep(name string, d time.Duration) Step {
 	return Step{
 		Name: name,
 		Action: func(ctx context.Context) error {
-			return chromedp.Sleep(d).Do(ctx)
+			return act.Sleep(d).Do(ctx)
 		},
 	}
 }
@@ -108,7 +108,7 @@ func SleepIf(name string, d time.Duration, cond func() bool) Step {
 			if !cond() {
 				return nil
 			}
-			return chromedp.Sleep(d).Do(ctx)
+			return act.Sleep(d).Do(ctx)
 		},
 	}
 }

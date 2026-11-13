@@ -3,14 +3,15 @@ package actions
 import (
 	"context"
 	"fmt"
+	"github.com/chromedp/chromedp"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
-	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
@@ -42,7 +43,7 @@ var consentCookies = map[string]string{
 
 // PreseedConsentCookies sets well-known consent/age-gate cookies for the
 // target URL's host before navigation. Pre-navigation action.
-func PreseedConsentCookies(target string) chromedp.ActionFunc {
+func PreseedConsentCookies(target string) act.Func {
 	return func(ctx context.Context) error {
 		u, err := url.Parse(target)
 		if err != nil {
@@ -65,10 +66,9 @@ func PreseedConsentCookies(target string) chromedp.ActionFunc {
 		set := 0
 		for _, domain := range domains {
 			for name, value := range consentCookies {
-				err := network.SetCookie(name, value).
-					WithDomain(domain).
-					WithPath("/").
-					Do(ctx)
+				_, err := chromedp.Call(ctx, network.SetCookie, network.SetCookieParams{
+					Name: name, Value: value, Domain: domain, Path: "/",
+				})
 				if err == nil {
 					set++
 				}
@@ -83,7 +83,7 @@ func PreseedConsentCookies(target string) chromedp.ActionFunc {
 // BEFORE the page's own JavaScript, seeding localStorage flags that consent
 // and age-gate scripts check on startup. Pre-navigation action; survives
 // reloads and same-tab navigations.
-func PreseedConsentStorage() chromedp.ActionFunc {
+func PreseedConsentStorage() act.Func {
 	return func(ctx context.Context) error {
 		script, err := js.Files.ReadFile(string(js.PreseedConsent))
 		if err != nil {
@@ -93,7 +93,7 @@ func PreseedConsentStorage() chromedp.ActionFunc {
 		source := fmt.Sprintf("(%s)();", script)
 		// Note: errors.Wrap(nil, ...) in this errors package returns a
 		// non-nil error, so only wrap actual failures.
-		if _, err := page.AddScriptToEvaluateOnNewDocument(source).Do(ctx); err != nil {
+		if _, err := chromedp.Call(ctx, page.AddScriptToEvaluateOnNewDocument, page.AddScriptToEvaluateOnNewDocumentParams{Source: source}); err != nil {
 			return errors.Wrap(err, "failed to register consent preseed script")
 		}
 		return nil

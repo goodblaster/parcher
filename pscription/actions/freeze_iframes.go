@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"github.com/chromedp/chromedp"
 	"image"
 	"image/png"
 	"time"
 
 	"github.com/chromedp/cdproto/page"
-	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
+	"github.com/goodblaster/parcher/pscription/act"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
@@ -86,7 +87,7 @@ var junkFrameHosts = []string{
 //
 // Runs before FreezeOpaqueIframes so that step's screenshot budget goes
 // to real embeds instead of trackers.
-func RemoveJunkIframes() chromedp.ActionFunc {
+func RemoveJunkIframes() act.Func {
 	return func(ctx context.Context) error {
 		var stats struct {
 			Removed int `json:"removed"`
@@ -128,7 +129,7 @@ const restoreOccluders = `(function () {
 // viewport (captureBeyondViewport included). So each frame is scrolled
 // into view, given a moment to paint, and screenshotted while it is
 // actually composited; the still then survives in every backend.
-func FreezeOpaqueIframes() chromedp.ActionFunc {
+func FreezeOpaqueIframes() act.Func {
 	return func(ctx context.Context) error {
 		var stats struct {
 			Marked  []int `json:"marked"`
@@ -150,8 +151,8 @@ func FreezeOpaqueIframes() chromedp.ActionFunc {
 		if len(stats.Marked) > 0 {
 			// Restore anything the last focus call hid for its shot, and
 			// leave the page where the other steps expect it.
-			_ = chromedp.Evaluate(restoreOccluders, nil).Do(ctx)
-			_ = chromedp.Evaluate(`window.scrollTo(0, 0)`, nil).Do(ctx)
+			_ = act.Evaluate(restoreOccluders, nil).Do(ctx)
+			_ = act.Evaluate(`window.scrollTo(0, 0)`, nil).Do(ctx)
 		}
 
 		log.With("frozen", frozen).
@@ -207,16 +208,17 @@ func freezeOneIframe(ctx context.Context, id int) error {
 // why it is not a flat sleep.
 func dwellUntilPainted(ctx context.Context, x, y, w, h float64) ([]byte, error) {
 	deadline := time.Now().Add(opaqueFrameDwell)
-	if err := chromedp.Sleep(opaqueFrameMinDwell).Do(ctx); err != nil {
+	if err := act.Sleep(opaqueFrameMinDwell).Do(ctx); err != nil {
 		return nil, err
 	}
 
 	var prev, cur []byte
 	for {
-		shot, err := page.CaptureScreenshot().WithFromSurface(true).Do(ctx)
+		res, err := chromedp.Call(ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{FromSurface: new(true)})
 		if err != nil {
 			return nil, errors.Wrap(err, "viewport screenshot")
 		}
+		shot := res.Data
 		cur, err = cropPNG(shot, x, y, w, h)
 		if err != nil {
 			return nil, errors.Wrap(err, "crop")
@@ -228,7 +230,7 @@ func dwellUntilPainted(ctx context.Context, x, y, w, h float64) ([]byte, error) 
 			return cur, nil
 		}
 		prev = cur
-		if err := chromedp.Sleep(opaqueFramePoll).Do(ctx); err != nil {
+		if err := act.Sleep(opaqueFramePoll).Do(ctx); err != nil {
 			return nil, err
 		}
 	}

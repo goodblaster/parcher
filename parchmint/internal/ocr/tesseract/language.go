@@ -101,7 +101,10 @@ var LanguageMap = map[string]string{
 // NormalizeLangCode extracts the primary language and optional region/script from a website language code
 func NormalizeLangCode(lang string) string {
 	lang = strings.ToLower(lang)
-	re := regexp.MustCompile(`^([a-z]{2,3})(?:[-_](hans|hant|[a-z]{2}))?$`)
+	// Language, then an optional script or region, then anything else: a
+	// page may declare zh-Hans-CN or en-US-x-private, and the old pattern
+	// (anchored after ONE subtag) matched none of those and returned "".
+	re := regexp.MustCompile(`^([a-z]{2,3})(?:[-_]([a-z]{2,4}))?(?:[-_].*)?$`)
 	matches := re.FindStringSubmatch(lang)
 
 	if matches != nil {
