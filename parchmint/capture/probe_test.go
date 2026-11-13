@@ -257,6 +257,16 @@ func TestProbeMarkHidden(t *testing.T) {
 		t.Errorf("reveal un-clipped a sized container: %s", tag)
 	}
 
+	// The shift is written into the markup (a saved file cannot record a
+	// scroll offset), it goes to the FIRST match's slide, and a library's
+	// clone of a slide never decides where the carousel is parked.
+	if !strings.Contains(out, "translate: -300px") {
+		t.Error("carousel was not shifted to its first off-view match (SLIDETWO) in a way the file keeps")
+	}
+	if !strings.Contains(out, "SLIDECLONE <mark") {
+		t.Error("a match in a clone slide should still be marked")
+	}
+
 	// A single reason narrows it.
 	res, err = RenderArchive(ctx, runner.DefaultConfig(), fileURL, []string{"zebra"}, layer,
 		RenderOptions{Match: textlayer.MatchOptions{Hidden: []string{textlayer.HiddenCollapsed}}})

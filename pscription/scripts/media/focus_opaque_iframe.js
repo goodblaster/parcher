@@ -5,7 +5,21 @@
 // headers, breadcrumb bars) are hidden for the shot — they would be baked
 // into the still — and restored on the next call or by the Go side's
 // final restore. Companion to locate_opaque_iframes.js.
+//
+// Inner scroll positions are restored the same way. scrollIntoView scrolls
+// EVERY scrollable ancestor, not just the window — and a carousel's clipping
+// box is one (overflow:hidden still scrolls programmatically). Left alone,
+// the carousel stayed parked on the last video frozen: on test-site-2 the
+// screenshot backends and the text layer showed slide 10 of a carousel whose
+// own state (and the DOM-serialized archive, which cannot record scrollLeft)
+// said slide 1 — so text the layer called visible was clipped in the file,
+// and `mark` could not find it without --hidden.
 function focusOpaqueIframe(id) {
+    for (const it of (window.__gbFrameShotScrolled || [])) {
+        try { it.el.scrollLeft = it.left; it.el.scrollTop = it.top; } catch (e) { /* element may be gone */ }
+    }
+    window.__gbFrameShotScrolled = [];
+
     // Restore whatever the previous focus call hid.
     for (const it of (window.__gbFrameShotHidden || [])) {
         try {
@@ -41,7 +55,13 @@ function focusOpaqueIframe(id) {
     // Align to the viewport BOTTOM: sticky site headers live at the top,
     // and with block:'center' they overlap the frame's box and get baked
     // into the captured still.
+    const before = [];
+    for (let el = frame.parentElement; el; el = el.parentElement) {
+        if (el === document.body || el === document.documentElement) break;
+        before.push({ el: el, left: el.scrollLeft, top: el.scrollTop });
+    }
     frame.scrollIntoView({ block: 'end', behavior: 'instant' });
+    window.__gbFrameShotScrolled = before.filter((it) => it.el.scrollLeft !== it.left || it.el.scrollTop !== it.top);
 
     // Viewport-relative box, walking out of any same-origin ancestor frames.
     const rect = frame.getBoundingClientRect();

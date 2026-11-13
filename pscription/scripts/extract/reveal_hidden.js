@@ -16,8 +16,24 @@
 //   a box collapsed to nothing (zero-height accordion, sr-only)
 //                               -> size and clipping lifted
 //   a sized box showing other content (carousel, scroller)
-//                               -> scrolled to the match; never un-clipped
-//                                  sideways, which would spill every slide
+//                               -> shifted to the match; never un-clipped
+//                                  sideways, which would spill every slide.
+//                                  The shift is written as a `translate` on
+//                                  the box's children, not left as a scroll
+//                                  offset: a saved file cannot record
+//                                  scrollLeft, so a scrolled box came back
+//                                  showing its first slide and the marked
+//                                  .html hid the very match it reported.
+//                                  A box shows ONE position — the first
+//                                  match wins; later ones in other slides
+//                                  are marked but counted as `elsewhere`.
+//   a carousel library's CLONE of a slide
+//                               -> left alone (`duplicate`): the original
+//                                  slide holds the same text, and a clone is
+//                                  an incomplete copy (on test-site-2 the
+//                                  clones have no video thumbnail), so
+//                                  parking the carousel on one showed a
+//                                  slide the page never really displays
 //   parked off-screen           -> position:static
 //
 // State causes are undone first and geometry measured after, because a
@@ -33,7 +49,11 @@
 function revealHidden(ids, opts) {
     const cache = window.__pmRunCache || {};
     const labelText = (opts && opts.label) || 'hidden on the original page';
-    const stats = { revealed: 0, unresolved: 0, changed: 0 };
+    const stats = { revealed: 0, unresolved: 0, changed: 0, duplicate: 0, elsewhere: 0 };
+    // Clipping boxes already shifted to a match, across all blocks.
+    const positioned = new Set();
+    // What the slider libraries call the copies they add for wrap-around.
+    const CLONE = '.slick-cloned, .swiper-slide-duplicate, .owl-item.cloned, .splide__slide--clone, .glide__slide--clone, .tns-slide-cloned, [data-clone="true"]';
     const TABLE_PARTS = new Set(['TR', 'TD', 'TH', 'TBODY', 'THEAD', 'TFOOT', 'TABLE', 'COL', 'COLGROUP', 'CAPTION']);
     const VOID = new Set(['IMG', 'INPUT', 'BR', 'HR', 'SELECT', 'TEXTAREA', 'VIDEO', 'AUDIO', 'CANVAS', 'IFRAME', 'SVG']);
 
@@ -106,6 +126,27 @@ function revealHidden(ids, opts) {
         }
     }
 
+    // Turns the scroll offsets scrollIntoView just gave the boxes on the
+    // ancestor chain into a `translate` on their children, and zeroes the
+    // offsets. Same picture, but one that survives being saved.
+    function bakeScroll(els, changed) {
+        for (const el of els) {
+            if (el.tagName === 'BODY' || el.tagName === 'HTML') continue;
+            const dx = el.scrollLeft, dy = el.scrollTop;
+            if (!dx && !dy) continue;
+            el.scrollLeft = 0;
+            el.scrollTop = 0;
+            for (const child of el.children) {
+                if (child.getAttribute('data-parchmint') === 'reveal-label') continue;
+                child.style.setProperty('translate', (-dx) + 'px ' + (-dy) + 'px', 'important');
+            }
+            positioned.add(el);
+            changed.add(el);
+        }
+    }
+
+    // Returns true (visible), false (could not be shown), or 'elsewhere'
+    // (its box is already showing another match).
     function undoGeometry(seg, els, changed) {
         const scrolled = new Set();
         // Up to a few rounds: lifting one clip can expose the next.
@@ -133,12 +174,14 @@ function revealHidden(ids, opts) {
                 // instead; only a box collapsed to nothing gets opened up.
                 const box = culprit.getBoundingClientRect();
                 if (box.width >= 40 && box.height >= 16) {
+                    if (positioned.has(culprit) && !scrolled.has(culprit)) return 'elsewhere';
                     if (!scrolled.has(culprit)) {
                         scrolled.add(culprit);
                         const target = seg.node.parentElement;
                         const pageX = window.scrollX, pageY = window.scrollY;
                         try { target.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { /* ignore */ }
                         window.scrollTo(pageX, pageY);
+                        bakeScroll(els, changed);
                         changed.add(culprit);
                         continue;
                     }
@@ -223,6 +266,7 @@ function revealHidden(ids, opts) {
         const seg = Array.isArray(map) ? map.find((s) => s.node && s.node.isConnected) : null;
         if (!seg) { stats.unresolved++; continue; }
         const els = chain(seg.node);
+        if (els[0].closest(CLONE)) { stats.duplicate++; continue; }
         const changed = new Set();
         undoState(els, changed);
         const ok = undoGeometry(seg, els, changed);
@@ -235,7 +279,8 @@ function revealHidden(ids, opts) {
             if (outer.tagName === 'BODY' || outer.tagName === 'HTML') outer = els[0];
             tag(outer);
         }
-        if (ok) stats.revealed++;
+        if (ok === 'elsewhere') stats.elsewhere++;
+        else if (ok) stats.revealed++;
         else stats.unresolved++;
     }
     return stats;

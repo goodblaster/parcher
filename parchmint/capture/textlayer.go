@@ -184,6 +184,8 @@ func applyHighlights(ctx context.Context, payload *textLayerPayload, phrases []s
 		var st struct {
 			Revealed   int `json:"revealed"`
 			Unresolved int `json:"unresolved"`
+			Duplicate  int `json:"duplicate"`
+			Elsewhere  int `json:"elsewhere"`
 		}
 		if err := js.RevealHidden.Action(&st, ids).Do(ctx); err != nil {
 			return counts, errors.Wrap(err, "reveal hidden text")
@@ -191,7 +193,15 @@ func applyHighlights(ctx context.Context, payload *textLayerPayload, phrases []s
 		if st.Unresolved > 0 {
 			log.With("blocks", st.Unresolved).Warn("some hidden text could not be made visible; its marks are in the document but may not show")
 		}
+		// Marked, but deliberately not brought into view: a carousel shows
+		// one position, and a library's clone of a slide repeats its original.
+		if st.Elsewhere > 0 {
+			log.With("blocks", st.Elsewhere).Warn("some matches are in other slides of a carousel already showing a match; they are marked but not in view")
+		}
 		l = l.With("revealed", st.Revealed)
+		if st.Duplicate > 0 {
+			l = l.With("carouselClones", st.Duplicate)
+		}
 	}
 
 	marks := map[int]markEntry{}

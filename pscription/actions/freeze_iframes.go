@@ -109,7 +109,8 @@ func RemoveJunkIframes() act.Func {
 	}
 }
 
-// restoreOccluders un-hides the fixed/sticky elements the LAST
+// restoreOccluders un-hides the fixed/sticky elements, and puts back the
+// inner scroll positions, that the LAST
 // focus_opaque_iframe.js call hid for its screenshot; the record format
 // matches what that script stores in window.__gbFrameShotHidden.
 const restoreOccluders = `(function () {
@@ -120,6 +121,10 @@ const restoreOccluders = `(function () {
 		} catch (e) { /* element may be gone */ }
 	}
 	window.__gbFrameShotHidden = [];
+	for (const it of (window.__gbFrameShotScrolled || [])) {
+		try { it.el.scrollLeft = it.left; it.el.scrollTop = it.top; } catch (e) { /* element may be gone */ }
+	}
+	window.__gbFrameShotScrolled = [];
 })()`
 
 // FreezeOpaqueIframes replaces cross-origin/sandboxed iframes with <img>
