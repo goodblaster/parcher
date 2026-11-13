@@ -9,7 +9,7 @@
 //	pscribe https://site.com @links --only links | xargs parch # crawler-without-a-crawler
 //
 //	# steps given as a .rx pscription file
-//	pscribe -r login-and-scrape.rx https://portal.site
+//	pscribe --recipe login-and-scrape.rx https://portal.site
 //	./login-and-scrape.rx https://portal.site            # if chmod +x with a shebang
 //
 // stdout carries the JSON report (or, with --only, one output raw). Logs go to
@@ -22,26 +22,45 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	flag "github.com/spf13/pflag"
 
 	"github.com/goodblaster/logos"
-	"github.com/goodblaster/parcher/pscription/internal/common"
 	"github.com/goodblaster/parcher/pscription/internal/log"
 	"github.com/goodblaster/parcher/pscription/pscription"
 )
 
+// version identifies the build; stamp releases with
+// -ldflags "-X main.version=v1.2.3".
+var version = "dev"
+
 func main() {
+	// Checked before flags: every bare word here is otherwise taken for a
+	// URL or a step, so `pscribe version` would try to open https://version.
+	// -v is already --verbose, so version has no shorthand.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version", "-version", "--version":
+			fmt.Println("pscribe " + version)
+			return
+		}
+	}
+
 	var (
-		recipe  string
-		prep    string
-		only    string
-		profile string
-		headful bool
-		timeout int
-		verbose bool
+		recipe    string
+		prep      string
+		only      string
+		profile   string
+		headful   bool
+		timeout   int
+		width     int
+		height    int
+		dpr       float64
+		userAgent string
+		verbose   bool
 	)
 
 	flag.Usage = func() {
@@ -52,15 +71,26 @@ func main() {
 		fmt.Fprintln(os.Stderr, "  path.js[:out]   your own page-context script")
 		fmt.Fprintln(os.Stderr, "  wait:user       pause for manual action (needs --show)")
 		fmt.Fprintln(os.Stderr, "  wait:2s         pause for a duration")
+		fmt.Fprintln(os.Stderr, "\nOther:")
+		fmt.Fprintf(os.Stderr, "  %s version     print the version and exit\n", filepath.Base(os.Args[0]))
 		fmt.Fprintln(os.Stderr, "\nOptions:")
 		flag.PrintDefaults()
 	}
-	flag.StringVarP(&recipe, "recipe", "r", "", "run this .rx pscription file instead of inline steps")
+	// Flag names and meanings match parch's wherever both have the option
+	// (--recipe, --profile, --show, --timeout, --width, --height, --dpr,
+	// --user-agent, -v), so nothing has to be relearned between the two.
+	flag.StringVar(&recipe, "recipe", "", "run this .rx pscription file instead of inline steps")
+	flag.StringVarP(&recipe, "recipe-file", "r", "", "deprecated spelling of --recipe")
+	_ = flag.CommandLine.MarkDeprecated("recipe-file", "use --recipe")
 	flag.StringVar(&prep, "prep", "", "prep phase: none, minimal (default), staticize")
 	flag.StringVar(&only, "only", "", "print just this output value (raw), not the full report")
 	flag.StringVar(&profile, "profile", "", "persistent Chrome user-data dir; log in once (with --show) and reuse the session on later runs")
 	flag.BoolVar(&headful, "show", false, "launch a visible browser (needed for wait:user)")
 	flag.IntVar(&timeout, "timeout", 120, "timeout in seconds")
+	flag.IntVar(&width, "width", 0, "viewport/layout width in px (0 = default 1600)")
+	flag.IntVar(&height, "height", 0, "viewport height in px (0 = default 900)")
+	flag.Float64Var(&dpr, "dpr", 0, "device pixel ratio (0 = 1)")
+	flag.StringVar(&userAgent, "user-agent", "", "user agent to announce (default: the browser's own Chrome one)")
 	flag.BoolVarP(&verbose, "verbose", "v", false, "debug logging")
 
 	// Steps are positional and trail the URL; pflag parses flags anywhere,
@@ -73,9 +103,19 @@ func main() {
 	if verbose {
 		level = logos.LevelDebug
 	}
-	log.SetDefault(log.LogosAdapter(logos.NewLogger(level, logos.ConsoleFormatter(), os.Stderr)))
-	if err := common.Init(); err != nil {
-		die(err)
+	// Configure logos itself, not just this module's seam: the seam's default
+	// delegates to the logos package logger, so one call covers both. (An
+	// Init helper used to run after this and reset the logos logger to DEBUG,
+	// which is how debug lines leaked out without -v.)
+	logos.SetDefaultLogger(logos.NewLogger(level, logos.ConsoleFormatter(), os.Stderr))
+
+	switch {
+	case timeout <= 0:
+		usageErr(fmt.Errorf("--timeout must be a positive number of seconds, got %d", timeout))
+	case width < 0 || height < 0:
+		usageErr(fmt.Errorf("--width and --height must not be negative"))
+	case dpr < 0:
+		usageErr(fmt.Errorf("--dpr must not be negative"))
 	}
 
 	args := flag.Args()
@@ -135,8 +175,12 @@ func main() {
 	log.With("url", url).With("steps", len(p.Steps)).With("prep", firstNonEmpty(p.Prep, "minimal")).Info("running pscription")
 
 	report, err := p.Run(ctx, url, pscription.Options{
-		Timeout: time.Duration(timeout) * time.Second,
-		Profile: profile,
+		Timeout:        time.Duration(timeout) * time.Second,
+		Profile:        profile,
+		ViewportWidth:  int64(width),
+		ViewportHeight: int64(height),
+		DPR:            dpr,
+		UserAgent:      userAgent,
 	})
 	if err != nil {
 		die(err)
@@ -184,6 +228,7 @@ func keys(m map[string]any) []string {
 	for k := range m {
 		ks = append(ks, k)
 	}
+	sort.Strings(ks)
 	return ks
 }
 
@@ -201,16 +246,17 @@ func die(err error) {
 	os.Exit(1)
 }
 
+// usageErr reports a bad invocation and exits 2 — the same split parch uses:
+// 2 for usage, 1 for a run that failed.
+func usageErr(err error) {
+	fmt.Fprintln(os.Stderr, "pscribe: "+err.Error())
+	os.Exit(2)
+}
+
 // prepareProfileDir expands ~ and ensures the persistent profile directory
 // exists.
 func prepareProfileDir(dir string) (string, error) {
-	if strings.HasPrefix(dir, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		dir = filepath.Join(home, dir[2:])
-	}
+	dir = pscription.ExpandHome(dir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("cannot create profile dir %q: %w", dir, err)
 	}

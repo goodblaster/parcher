@@ -98,15 +98,25 @@ async function captureVideoFrames() {
 
         let frameSrc = null;
         if (video.readyState >= 2 && video.videoWidth > 0) {
-            // A tiny seek off t=0 avoids blank first frames.
+            // A tiny seek off t=0 avoids blank first frames. `seeked` says
+            // the position changed, not that the new frame reached the
+            // compositor; requestVideoFrameCallback does, so wait for THAT
+            // (armed before the seek so the frame cannot slip past) instead
+            // of guessing with a fixed sleep. No seek, no new frame: the
+            // short settle is all there is to wait for.
+            let presented = null;
             if (video.currentTime === 0) {
                 try {
+                    if (video.requestVideoFrameCallback) {
+                        presented = new Promise((resolve) => video.requestVideoFrameCallback(resolve));
+                    }
                     video.currentTime = 0.1;
                     await awaitEvent(video, ['seeked'], 1000);
                 } catch (e) { /* ignore */ }
             }
             video.pause();
-            await sleep(50); // let the frame settle
+            if (presented) await Promise.race([presented, sleep(250)]);
+            else await sleep(50); // let the frame settle
 
             // Capture at the size the still will be DISPLAYED at, times the
             // device pixel ratio — never at the video's intrinsic size, which

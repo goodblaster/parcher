@@ -5,7 +5,7 @@
 # a `key: value` directive.
 #
 # Run it:
-#   pscribe -r headings.rx <url>
+#   pscribe --recipe headings.rx <url>
 #   pscribe headings.rx <url>          # .rx as the first arg works too
 #   ./headings.rx <url>           # or make it executable, if pscribe is on PATH
 #

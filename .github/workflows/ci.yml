@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: make vet
+      # Pure-Go tests plus the node parse check over every embedded script.
+      - run: make test
+      - run: make build
+
+  probe:
+    # Drives a real Chrome against a local page: hidden-text classification,
+    # `hidden`-attribute survival, inline-style backgrounds, mark --hidden.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: browser-actions/setup-chrome@v1
+      - run: make probe

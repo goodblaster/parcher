@@ -2,6 +2,7 @@ package scripts
 
 import (
 	"embed"
+	"sort"
 )
 
 //go:embed */*.js
@@ -31,6 +32,7 @@ const (
 	MaterializeFormState      ScriptFile = "page-prep/materialize_form_state.js"
 	FlattenAdoptedStylesheets ScriptFile = "page-prep/flatten_adopted_stylesheets.js"
 	LinkShadowStyles          ScriptFile = "page-prep/link_shadow_styles.js"
+	PreserveHiddenAttr        ScriptFile = "page-prep/preserve_hidden_attr.js"
 )
 
 // Media handling scripts
@@ -82,6 +84,7 @@ const (
 	ExtractText      ScriptFile = "extract/text.js"
 	ExtractTextLayer ScriptFile = "extract/text_layer.js"
 	ApplyTextMarks   ScriptFile = "extract/apply_text_marks.js"
+	RevealHidden     ScriptFile = "extract/reveal_hidden.js"
 )
 
 // builtinScripts maps the "@name" reference to its embedded script.
@@ -104,5 +107,6 @@ func BuiltinScriptNames() []string {
 	for name := range builtinScripts {
 		names = append(names, name)
 	}
+	sort.Strings(names) // error messages list these; map order is random
 	return names
 }

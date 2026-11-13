@@ -1,5 +1,5 @@
 // Package windows is a PLACEHOLDER for OCR via the Windows.Media.Ocr
-// API — the engine Windows ships with, so `parch index` there would need
+// API — the engine Windows ships with, so `parch ocr` there would need
 // no install, exactly as Apple Vision needs none on macOS. It is not
 // implemented; every call returns an error naming tesseract instead, and
 // ocr.Default() still picks tesseract on Windows. Nothing selects this

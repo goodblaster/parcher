@@ -10,6 +10,7 @@ import (
 	"github.com/goodblaster/parcher/parchmint/internal/convert/render"
 	"github.com/goodblaster/parcher/parchmint/internal/log"
 	"github.com/goodblaster/parcher/pscription/actions"
+	"github.com/goodblaster/parcher/pscription/pipeline"
 )
 
 func init() {
@@ -67,6 +68,11 @@ func (HTML) Action(snap *Snapshot) chromedp.ActionFunc {
 				return err
 			}
 		}
+
+		// Chrome's snapshot drops every element with a `hidden` attribute;
+		// trade the attribute for a data- one first. Runs for archives too
+		// (a conversion re-snapshots, and would lose them just the same).
+		_ = pipeline.PreserveHiddenStep().Action(ctx)
 
 		var content string
 		if err := actions.SaveMhtToString(&content)(ctx); err != nil {

@@ -16,10 +16,13 @@ import (
 // lines as records, not as block ids.
 func runLinesCommand(args []string) {
 	fs := flag.NewFlagSet("lines", flag.ExitOnError)
+	hidden := registerHidden(fs, "also print text the page hides, after the visible lines.")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s lines <archive.html|.mht|.pdf> ('-' = stdin)\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s lines [--hidden] <archive.html|.mht|.pdf> ('-' = stdin)\n\n", os.Args[0])
 		fmt.Fprintln(os.Stderr, "Prints one line per paragraph block of the embedded text layer —")
 		fmt.Fprintln(os.Stderr, "plain text only. For block ids and provenance use `text --blocks`.")
+		fmt.Fprintln(os.Stderr, "\nOptions:")
+		fs.PrintDefaults()
 	}
 	_ = fs.Parse(args)
 	if fs.NArg() != 1 {
@@ -33,8 +36,13 @@ func runLinesCommand(args []string) {
 		os.Exit(1)
 	}
 
+	blocks, err := selectBlocks(layer, hiddenReasons(*hidden))
+	if err != nil {
+		usageErr(err)
+	}
+
 	w := bufio.NewWriter(os.Stdout)
-	for _, b := range layer.Blocks {
+	for _, b := range blocks {
 		line := strings.TrimSpace(strings.ReplaceAll(b.Text, "\n", " "))
 		if line == "" {
 			continue

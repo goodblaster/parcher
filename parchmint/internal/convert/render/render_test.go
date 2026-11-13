@@ -266,3 +266,51 @@ func TestTestdataSample(t *testing.T) {
 		t.Errorf("quoted-printable body not decoded:\n%s", out)
 	}
 }
+
+// Blink stores an inline <style> as a part located at a cid: URI. Its
+// relative url()s belong to the document, not to that cid: — resolving them
+// against the part's own location left them dangling.
+func TestCIDStylesheetResolvesAgainstDocument(t *testing.T) {
+	doc := mht(t,
+		htmlPart(`<html><head><link rel="stylesheet" href="cid:css-1@mhtml.blink"></head><body><p class="bg">x</p></body></html>`),
+		cssPart("cid:css-1@mhtml.blink", `.bg { background-image: url("/img/bg.png"); mask-image: url(mask.png) }`),
+		imagePart("https://example.com/img/bg.png"),
+		imagePart("https://example.com/mask.png"),
+	)
+
+	out, err := Document(doc, Options{})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	got := string(out)
+	if strings.Contains(got, "/img/bg.png") || strings.Contains(got, "mask.png") {
+		t.Fatalf("relative url() in a cid: stylesheet was left dangling:\n%s", got)
+	}
+	if n := strings.Count(got, "data:image/png;base64,"); n != 2 {
+		t.Fatalf("want both references inlined, got %d:\n%s", n, got)
+	}
+}
+
+// The capture hides `hidden` from Chrome's serializer behind a data-
+// attribute; the HTML output must get the real attribute — and the element's
+// own style — back.
+func TestRestoreHiddenAttribute(t *testing.T) {
+	doc := mht(t, htmlPart(`<html><body>`+
+		`<div data-parchmint-hidden="" style="display: none !important;"><p>plain</p></div>`+
+		`<div data-parchmint-hidden="until-found" data-parchmint-style="color: red" style="color: red; display: block !important; content-visibility: hidden !important;">found</div>`+
+		`</body></html>`))
+
+	out, err := Document(doc, Options{})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	got := string(out)
+	for _, want := range []string{`<div hidden=""><p>plain</p></div>`, `<div hidden="until-found" style="color: red">found</div>`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %s in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "data-parchmint") {
+		t.Errorf("data-parchmint attributes left behind:\n%s", got)
+	}
+}

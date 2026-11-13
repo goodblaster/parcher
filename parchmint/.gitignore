@@ -30,6 +30,9 @@ go.work.sum
 *.png
 *.jpg
 *.jpeg
+# …except test fixtures, which are pages on purpose. Without this the probe
+# suite's page is silently left out of a commit and `make probe` fails in CI.
+!**/testdata/*.html
 
 # Stray binary from `go build ./cmd/parch` without -o bin/
 /parch

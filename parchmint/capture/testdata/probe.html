@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Probe</title>
+<style>
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.tab{display:none}.tab.on{display:block}
+.acc{max-height:0;overflow:hidden}
+.shown[hidden]{display:block}
+.bg{width:40px;height:40px;background-image:url(/bg.png)}
+</style></head><body>
+<h1>VISIBLEHEAD probe page</h1>
+<p>VISIBLEPARA plain paragraph, with <span style="display:none">INLINENONE zebra</span> a hidden inline run.</p>
+<div style="display:none"><p>DISPLAYNONE zebra.</p></div>
+<p style="visibility:hidden">VISHIDDEN zebra. <span style="visibility:visible">VISBACK shown again.</span></p>
+<div style="opacity:0"><p>OPACITYZERO zebra.</p></div>
+<p style="clip-path:inset(50%)">CLIPPATH zebra.</p>
+<span class="sr">SRONLY zebra.</span>
+<details><summary>DETAILSSUMMARY shown</summary><p>DETAILSCLOSED zebra.</p></details>
+<details open><summary>OPENSUMMARY shown</summary><p>DETAILSOPEN shown.</p></details>
+<div hidden><p>HIDDENATTR zebra.</p></div>
+<div hidden="until-found"><p>UNTILFOUND zebra.</p></div>
+<div hidden class="shown"><p>SHOWNHIDDEN visible despite the attribute.</p></div>
+<div class="tab on"><p>TABACTIVE shown.</p></div>
+<div class="tab"><p>TABINACTIVE zebra.</p></div>
+<div style="position:absolute;left:-9999px"><p>OFFSCREEN zebra.</p></div>
+<div style="content-visibility:hidden"><p>CONTENTVIS zebra.</p></div>
+<div class="acc"><p>ACCORDION zebra.</p></div>
+<p style="font-size:0">FONTZERO zebra.</p>
+<div style="display:none !important;visibility:hidden !important;opacity:0 !important;pointer-events:none !important"><p>PREPHIDDEN zebra.</p></div>
+<textarea>TEXTAREATEXT shown</textarea>
+<select><option>SELECTOPT shown</option><option>SELECTOTHER zebra</option></select>
+<input value="INPUTVALUE shown" size=30>
+<input type="password" value="PASSWORDVALUE zebra">
+<svg width="300" height="40"><text x="5" y="25">SVGTEXT shown</text></svg>
+<div id="carousel" style="width:300px;height:40px;overflow:hidden"><div style="display:flex;width:900px"><p style="width:300px;margin:0">SLIDEONE shown</p><p style="width:300px;margin:0">SLIDETWO zebra</p><p style="width:300px;margin:0">SLIDETHREE zebra</p></div></div>
+<div class="bg"></div>
+</body></html>

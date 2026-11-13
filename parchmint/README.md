@@ -35,7 +35,7 @@ parch -f png https://example.com           # full-page screenshot (lossless)
 parch -f jpeg https://example.com          # full-page screenshot (smaller)
 parch --links new-tab https://example.com   # external links open in a new tab
 parch --links disable https://example.com   # links kept but unclickable
-parch --favicon=false https://example.com   # skip embedding the page favicon
+parch --no-favicon https://example.com   # skip embedding the page favicon
                                            #   (embedded as a data URI: shown by
                                            #    Chromium/Firefox, ignored by Safari)
 parch https://example.com > page.html      # content on stdout when piped
@@ -43,10 +43,16 @@ parch text page.html                       # rendered text back out of an archiv
 parch lines page.html                      # one plain-text line per paragraph — pipe food
 parch text --blocks page.html               # NDJSON, one paragraph per line with ids and
                                            # provenance — feed for external indexers
+parch ./saved-page.html                    # a page already on disk can be captured too
 parch find "some phrase" page.html         # search an archive, no browser needed
 parch find -l -0 "phrase" *.html |         # …or a whole corpus: grep flags (-l -c -q -m,
-  xargs -0 -n1 parch mark "phrase"         # -r DIR recursive), file: prefixes, NDJSON
-                                           # -json, colored matches on a TTY (--color)
+  xargs -0 -n1 parch mark "phrase"         # -r into directories), file: prefixes, NDJSON
+                                           # --json, colored matches on a TTY (--color)
+parch find --hidden "returns" page.html    # also search what the page HID: collapsed FAQ
+                                           # answers, inactive tabs, "read more" bodies —
+                                           # each hit tagged [hidden:collapsed], [hidden:display]…
+parch mark --hidden "returns" page.html    # …and reveal + mark them in the copy, outlined
+                                           # and labelled "hidden on the original page"
 parch find -e 'trilob(ite|ita)s?' p.html   # regex mode; also -z 2 fuzzy (OCR typos),
                                            # -w whole words, -s case-sensitive, -F literal,
                                            # --in td,th and --source ocr scoping
@@ -55,8 +61,8 @@ parch ocr page.html                        # OCR the archive's images (charts, f
                                            # canvases/iframes) into the text layer —
                                            # needed only to mark text inside images
 parch mark "phrase" page.html              # → page.marked.html with matches highlighted,
-                                           # including matches inside images (-grayscale)
-parch mark -c gold -c cyan foo bar p.html  # a color per phrase; --style underline|box|bold
+                                           # including matches inside images (--grayscale)
+parch mark --mark-color gold --mark-color cyan foo bar p.html  # a color per phrase; --mark-style underline|box|bold
 parch mark -f pdf "phrase" page.html       # → page.marked.pdf: selectable text (incl.
                                            # inside OCR'd images), marks, attached layer
 parch mark -f png --dpr 0.4 "x" page.html   # …or any raster; --dpr resizes without reflowing
@@ -80,10 +86,22 @@ accents, punctuation, and typographic quotes; `*` bridges words
 ("apple*card" finds "Apple Gift Card"). Opt-in modes sharpen or loosen
 that: `-e` regex, `-z N` fuzzy (finds what OCR *almost* read), `-w`
 whole words, `-s` case-sensitive, `-F` literal, `--in`/`--source`
-structural scoping — one matcher shared by `find`, `mark`, `pdf`, and
+structural scoping — one matcher shared by `find`, `mark`, and
 capture-time `-M`, so a query that finds is a query that
 highlights. Hits come with pixel coordinates (`--json`) and grep-like
-exit codes for scripting. Disable at capture with `--text=false`.
+exit codes for scripting. Disable at capture with `--no-text`.
+
+**Hidden text.** A page carries words it does not show — the collapsed
+accordion, the tab you did not click. The layer records them separately,
+with the reason each was hidden, and leaves them out of every search unless
+you pass `--hidden`. `parch mark` tells you when there were more matches in
+hidden text; `parch mark --hidden` opens them up in the marked copy. The
+archive itself is never altered: it stays the page as it was.
+
+Flags mean the same thing on every command (`-o` output, `-f` format, `-v`
+verbose, `-h` help; `--width`/`--height`/`--dpr`/`--paper`; `--timeout`;
+`--mark-color`/`--mark-style`; `--hidden`), and exit status is 0 / 1 failed
+or no match / 2 bad invocation.
 
 Built on [pscription](../pscription), which does the
 browser driving and page preparation; the capture backends (HTML, MHT, PDF,

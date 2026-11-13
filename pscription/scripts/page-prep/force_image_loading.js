@@ -1,6 +1,7 @@
 // Forces eager loading of every image on the page, defeating the common
 // lazy-loading patterns:
-//   - native loading="lazy"
+//   - native loading="lazy", on images AND iframes — a lazy iframe below
+//     the fold never loads, which leaves freeze-iframes nothing to shoot
 //   - data-src / data-srcset style deferred attributes (img, source, video)
 //   - data-bg / data-background deferred CSS backgrounds
 //   - lazyload marker classes
@@ -14,7 +15,7 @@
 
     function collect(root) {
         const found = Array.from(root.querySelectorAll(
-            'img, picture source, video, [data-src], [data-lazy-src], [data-bg], [data-background], [data-background-image]'));
+            'img, iframe[loading="lazy"], picture source, video, [data-src], [data-lazy-src], [data-bg], [data-background], [data-background-image]'));
         for (const el of root.querySelectorAll('*')) {
             if (el.shadowRoot) {
                 found.push(...collect(el.shadowRoot));
@@ -54,6 +55,11 @@
             }
             for (const c of lazyClasses) {
                 el.classList.remove(c);
+            }
+        } else if (tag === 'iframe') {
+            if (el.loading === 'lazy') {
+                el.loading = 'eager';
+                processed++;
             }
         } else if (tag === 'source') {
             const v = el.getAttribute('data-srcset') || el.getAttribute('data-src');

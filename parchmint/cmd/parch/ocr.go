@@ -25,10 +25,14 @@ func runOCRCommand(args []string) {
 	fs := flag.NewFlagSet("ocr", flag.ExitOnError)
 	engineName := fs.String("engine", ocr.Default(), "OCR engine: apple (macOS Vision) or tesseract")
 	langFlag := fs.String("lang", "", "comma-separated OCR language hints (default: the page's declared language, else en-US)")
-	minSize := fs.Int("min", 32, "skip images displayed smaller than this (px, either dimension)")
+	minSize := fs.Int("min-size", 32, "skip images displayed smaller than this (px, either dimension)")
+	fs.IntVar(minSize, "min", 32, "deprecated spelling of --min-size")
+	_ = fs.MarkDeprecated("min", "use --min-size")
 	output := fs.StringP("output", "o", "", "write result here instead of updating the archive in place")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s ocr [--engine apple|tesseract] [--lang en-US] <archive.html>\n\nOptions:\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s ocr [--engine apple|tesseract] [--lang en-US] [-o out] <archive.html|.mht>\n\n", os.Args[0])
+		fmt.Fprintln(os.Stderr, "Updates the archive in place unless -o names another file.")
+		fmt.Fprintln(os.Stderr, "\nOptions:")
 		fs.PrintDefaults()
 	}
 	_ = fs.Parse(args)
@@ -38,14 +42,11 @@ func runOCRCommand(args []string) {
 	}
 	path := fs.Arg(0)
 
-	die := func(err error) {
-		fmt.Fprintln(os.Stderr, "parch: "+err.Error())
-		os.Exit(1)
-	}
+	die := fail
 
 	engine := ocr.New(*engineName)
 	if engine == nil {
-		die(fmt.Errorf("unknown OCR engine %q (want apple or tesseract)", *engineName))
+		usageErr(fmt.Errorf("unknown OCR engine %q (want apple or tesseract)", *engineName))
 	}
 
 	data, err := os.ReadFile(path)
@@ -95,6 +96,12 @@ func runOCRCommand(args []string) {
 	layer.Blocks = kept
 	nextID := 0
 	for _, b := range layer.Blocks {
+		if b.ID >= nextID {
+			nextID = b.ID + 1
+		}
+	}
+	// Hidden blocks share the id sequence; an OCR block must not reuse one.
+	for _, b := range layer.Hidden {
 		if b.ID >= nextID {
 			nextID = b.ID + 1
 		}

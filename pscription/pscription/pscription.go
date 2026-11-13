@@ -62,6 +62,14 @@ type Options struct {
 	Timeout time.Duration
 	// Profile overrides the pscription's Profile (persistent user-data dir).
 	Profile string
+
+	// ViewportWidth, ViewportHeight and DPR override the default viewport
+	// (zero = the default); UserAgent overrides the browser's own (empty =
+	// the browser's own). Same meanings as runner.Config.
+	ViewportWidth  int64
+	ViewportHeight int64
+	DPR            float64
+	UserAgent      string
 }
 
 // StepResult records how one step went.
@@ -99,6 +107,16 @@ func (p *Pscription) Run(ctx context.Context, url string, opts Options) (*Report
 		cfg.Timeout = opts.Timeout
 	}
 	cfg.Headful = p.Headful
+	if opts.ViewportWidth > 0 {
+		cfg.ViewportWidth = opts.ViewportWidth
+	}
+	if opts.ViewportHeight > 0 {
+		cfg.ViewportHeight = opts.ViewportHeight
+	}
+	if opts.DPR > 0 {
+		cfg.DeviceScaleFactor = opts.DPR
+	}
+	cfg.UserAgent = opts.UserAgent
 	cfg.UserDataDir = firstNonEmpty(opts.Profile, p.Profile)
 	cfg.PreNavigate = prep.PreNavigateActions(url)
 
@@ -108,7 +126,9 @@ func (p *Pscription) Run(ctx context.Context, url string, opts Options) (*Report
 	}
 	defer session.Close()
 
-	report := &Report{URL: url, Outputs: map[string]any{}, OK: true}
+	// Steps starts non-nil so a run with no steps reports "steps": [] — a
+	// consumer iterating the report should not have to special-case null.
+	report := &Report{URL: url, Outputs: map[string]any{}, Steps: []StepResult{}, OK: true}
 
 	// Prep phase: reuse the prep recipe's steps, honoring ContinueOnError.
 	for _, s := range prep.Steps {

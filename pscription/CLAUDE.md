@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Serialization lives downstream: [parchmint](../parchmint) (binary `parch`) owns the capture backends (HTML, MHT, PDF, screenshots) and consumes this library for browser driving and prep. The line between the components: **pscription = live pages, parchmint = files.**
 
-**Primary Language:** Go 1.24
+**Primary Language:** Go 1.26
 **Runtime requirement:** a Chrome/Chromium installation (not bundled).
 
 ## Build & Run
@@ -17,13 +17,13 @@ Serialization lives downstream: [parchmint](../parchmint) (binary `parch`) owns 
 go build -o bin/ ./cmd/...
 ./bin/pscribe https://news.site @article                  # built-in article extractor
 ./bin/pscribe https://shop.com dismiss.js prices.js:out   # your own scripts, capture "out"
-./bin/pscribe -r login-and-scrape.rx https://portal.site  # .rx pscription file
+./bin/pscribe --recipe login-and-scrape.rx https://portal.site  # .rx pscription file
 ./bin/pscribe --prep staticize -v https://example.com     # full prep, debug logging
 ```
 
 stdout carries the JSON report (or one output raw with `--only`); logs go to stderr.
 
-`go test ./scripts/` parses every embedded script with node (skipped when node is absent) — the only automated test here, and it exists because a script that fails to PARSE is invisible at runtime: prep steps are `stepIgnoreError`, so the exception is logged once and swallowed, and the page silently loses that step's behavior. Behavior changes are still verified by building parchmint's `parch` from this repository (one module, so changes here are picked up directly) and running its verification flow.
+`go test ./pscription/...` covers the `.rx` parser and step grammar, and parses every embedded script with node (skipped when node is absent). The parse check exists because a script that fails to PARSE is invisible at runtime: prep steps are `stepIgnoreError`, so the exception is logged once and swallowed, and the page silently loses that step's behavior. Behavior changes are still verified by building parchmint's `parch` from this repository (one module, so changes here are picked up directly) and running its verification flow.
 
 ## Architecture
 
@@ -33,9 +33,9 @@ Flow: **runner** (browser session) → **pipeline** (preparation recipe) → scr
 - **`pipeline/`** — `Step{Name, Action, ContinueOnError}`, `Recipe{Name, PreNavigate, Steps}` with per-step logging/timing. `Staticize()` is the default page-prep recipe. `Register/Lookup` step registry exists so recipes can become data (per-site overrides) without recompiling. `RewriteLinksStep(mode)` is an optional final step.
 - **`pscription/`** — The `.rx` file format: parsing and running step lists, prep selection (`none`/`minimal`/`staticize`), variables, outputs.
 - **`actions/`** — Composable `chromedp.ActionFunc` building blocks (dialog dismissal, waits, server-side resource fetching/injection, media freezing, consent pre-seeding, CSP bypass). `SettleMonitor` is the exception to "composable and independent": a recipe owns one, attaches it pre-navigation, and builds its waits from it, so they share one continuous record of page activity (see the invariant below). Its unattached zero value falls back to the standalone prospective waits, which is what the step registry hands out.
-- **`scripts/`** — Embedded page-context JS + the `ScriptFile` engine: JSON param injection, async detection (leading comments are stripped — a script is async iff its first code token starts `async function`; async scripts are properly awaited), dev-mode reload from disk (`gb_env=dev`). See [SCRIPTS.md](SCRIPTS.md).
-- **`agents/`** — User-agent constants.
-- **`internal/`** — common (CLI init, .env), config, log. Logs always go to **stderr**. `internal/log` defaults to delegating to the logos package-level logger, so external consumers get this library's logs just by configuring logos; parchmint mirrors the same pattern with its own `internal/log`.
+- **`scripts/`** — Embedded page-context JS + the `ScriptFile` engine: JSON param injection, async detection (leading comments are stripped — a script is async iff its first code token starts `async function`; async scripts are properly awaited), dev-mode reload from disk (`PSCRIPTION_SCRIPTS_DIR`). See [SCRIPTS.md](SCRIPTS.md).
+- **`agents/`** — User-agent constants. A session announces the RUNNING browser's own user agent with the headless marker removed and matching client hints (`runner.userAgentAction`); `Config.UserAgent` overrides it verbatim. It used to be a Safari string sent from Chrome — a site branching on it served Safari paths to a browser that is not Safari. The server-side fetchers ask the page for the same string (`fetchUserAgent`, once per batch) so a resource request matches the browser that loaded the page.
+- **`internal/`** — config, log. Environment variables are namespaced `PSCRIPTION_*` (`_VIEW_WIDTH`, `_VIEW_HEIGHT`, `_FETCH_CONCURRENCY`, `_SCRIPTS_DIR`, `_PROFILE_SCRIPTS`) and NOTHING loads a `.env`: the bare `VIEW_WIDTH` read from a working-directory `.env` meant any project's `.env` could change a capture's viewport. Logs always go to **stderr**. `internal/log` defaults to delegating to the logos package-level logger, so external consumers get this library's logs just by configuring logos; parchmint mirrors the same pattern with its own `internal/log`.
 
 ## Dialog clearing is layered — keep this order when tuning
 
@@ -68,6 +68,12 @@ Capture-backend invariants (encoder limits, PDF quirks, what Chrome's MHTML writ
 - Never remove elements matched by class alone without a structural guard — sites put state classes like `age-gate-open` on `<body>`.
 - An age-gate click can trigger a reload: `actions.WaitForReady` absorbs it, and injected CSS must be re-applied afterwards.
 - **`goodblaster/errors.Wrap(nil, msg)` returns a NON-NIL error.** Never tail-return `errors.Wrap` unguarded.
+- **Log through `internal/log`, and log an error's TEXT.** Library code that called `logos` directly bypassed the seam, and `With("error", err)` renders an error value as `{}` — every failed fetch logged `error={}` and the reason a resource went missing was never visible. Use `log.With("reason", err.Error())` or `log.WithError(err)`. The CLI configures the logos default logger once; nothing may reset it afterwards (an init helper that did is how debug lines leaked out of `pscribe` without `-v`).
+- **A pre-navigation action that returns an error fails the session.** `PreseedConsentCookies` errored on a hostless URL, so a `file:` page could not be captured at all; anything that is merely inapplicable must return nil.
+- **A fetch that failed once is not retried a few seconds later.** `PrefetchCache.take` reports a real failure as known-failed; only a fetch that never ran (context ended) falls back to a fresh one. Refetching sent two identical doomed requests for every hotlink-protected image.
+- **Server-side fetches are capped** (`maxResourceBytes`) and carry the capture context. A resource becomes a base64 data: URI held in memory; an endless response must fail, not be read to the end — and it must fail rather than truncate, since a truncated image embeds as a corrupt one.
+- **`dismiss-popups` closes only MODAL `<dialog>`s** (or ones named like an overlay). A non-modal `<dialog open>` is a content panel the page chose to show; closing every `dialog[open]` deleted those from archives.
+- **`preserve-hidden-attr` is a snapshot-backend step, not a Staticize step.** It unhooks the page's own `[hidden]` selectors (freezing the computed result inline), which is harmless a moment before a snapshot and pointless damage for a backend that photographs the live page. See parchmint's "Hidden text".
 
 ## Verification
 
@@ -79,7 +85,7 @@ Prep changes are exercised end-to-end through parchmint: build `parch` from this
 - New prep behavior = a named pipeline step (JS file → `ScriptFile` constant in `scripts/embed.go` → action wrapper → step in `pipeline/staticize.go` + `Register`), not inline workflow code.
 - Scripts return a small stats object; it lands in step logs.
 - CLI: logs → stderr, content → stdout/file.
-- **Flags use [spf13/pflag](https://github.com/spf13/pflag)**, matching parchmint: long name canonical, short as a shorthand (`StringVarP(&recipe, "recipe", "r", …)`), so `-r`/`--recipe` are one flag. Multi-character flags take two dashes. pflag parses flags anywhere on the line, which is why `pscribe URL @links --only links` works and why no flag-reordering helper is needed.
+- **Flags use [spf13/pflag](https://github.com/spf13/pflag)**, matching parchmint, and the names are parchmint's wherever both have the option: `--recipe`, `--profile`, `--show`, `--timeout`, `--width`, `--height`, `--dpr`, `--user-agent`, `-v`. (`-r` still works for `--recipe`, deprecated: in `parch find` it means recursive.) Exit status follows parch too — 2 for a bad invocation, 1 for a run that failed. Multi-character flags take two dashes. pflag parses flags anywhere on the line, which is why `pscribe URL @links --only links` works and why no flag-reordering helper is needed.
 
 ## Known cleanup remaining
 

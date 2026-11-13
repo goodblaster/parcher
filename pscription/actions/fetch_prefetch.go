@@ -2,10 +2,11 @@ package actions
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/logos"
+	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
@@ -35,7 +36,7 @@ func NewPrefetchCache() *PrefetchCache {
 }
 
 // start kicks off a fetch for url unless one is already recorded.
-func (c *PrefetchCache) start(ctx context.Context, url string, gate *hostGate) {
+func (c *PrefetchCache) start(ctx context.Context, url, userAgent string, gate *hostGate) {
 	c.mu.Lock()
 	if _, ok := c.entry[url]; ok {
 		c.mu.Unlock()
@@ -53,28 +54,35 @@ func (c *PrefetchCache) start(ctx context.Context, url string, gate *hostGate) {
 			return
 		}
 		defer release()
-		e.dataURL, e.err = fetchAsDataURL(ctx, fetchClient, url)
+		e.dataURL, e.err = fetchAsDataURL(ctx, fetchClient, url, userAgent)
 	}()
 }
 
 // take returns a prefetched result, waiting if the fetch is still in
-// flight. ok is false when the URL was never prefetched.
-func (c *PrefetchCache) take(ctx context.Context, url string) (string, bool) {
+// flight. known is false when the URL was never prefetched (or its fetch
+// never got to run), which means "fetch it normally". A fetch that ran and
+// FAILED is known, with its error: the server already said no once, and
+// asking again a few seconds later sent two identical doomed requests per
+// URL — on a page of hotlink-protected images, double the 403s.
+func (c *PrefetchCache) take(ctx context.Context, url string) (dataURL string, known bool, err error) {
 	c.mu.Lock()
 	e, ok := c.entry[url]
 	c.mu.Unlock()
 	if !ok {
-		return "", false
+		return "", false, nil
 	}
 	select {
 	case <-e.done:
 	case <-ctx.Done():
-		return "", false
+		return "", false, nil
 	}
 	if e.err != nil {
-		return "", false // fall back to a normal fetch
+		if errors.Is(e.err, context.Canceled) || errors.Is(e.err, context.DeadlineExceeded) {
+			return "", false, nil // never really attempted
+		}
+		return "", true, e.err
 	}
-	return e.dataURL, true
+	return e.dataURL, true, nil
 }
 
 // PrefetchImages starts fetching every image URL the page references so
@@ -87,10 +95,11 @@ func PrefetchImages(cache *PrefetchCache) chromedp.ActionFunc {
 			return nil // speculative: never fail the capture
 		}
 		gate := newHostGate(perHostLimit(), maxFetchConcurrency)
+		userAgent := fetchUserAgent(ctx)
 		for _, u := range urls {
-			cache.start(ctx, u, gate)
+			cache.start(ctx, u, userAgent, gate)
 		}
-		logos.With("count", len(urls)).Debug("prefetching images")
+		log.With("count", len(urls)).Debug("prefetching images")
 		return nil
 	}
 }
@@ -101,28 +110,32 @@ func fetchAllCached(ctx context.Context, cache *PrefetchCache, urls []string, wh
 	out := make(map[string]string, len(urls))
 	var missing []string
 	seen := map[string]bool{}
-	prefetched := 0
+	prefetched, failed := 0, 0
 	for _, u := range urls {
 		if seen[u] {
 			continue
 		}
 		seen[u] = true
-		if dataURL, ok := cache.take(ctx, u); ok {
+		dataURL, known, err := cache.take(ctx, u)
+		switch {
+		case !known:
+			missing = append(missing, u)
+		case err != nil:
+			log.With("url", u).With("reason", err.Error()).Debug("failed to fetch " + what)
+			failed++
+		default:
 			out[u] = dataURL
 			prefetched++
-			continue
 		}
-		missing = append(missing, u)
 	}
 	fetched := prefetched
-	failed := 0
 	if len(missing) > 0 {
 		late, f, fail := fetchAllAsDataURLs(ctx, missing, what)
 		for k, v := range late {
 			out[k] = v
 		}
 		fetched += f
-		failed = fail
+		failed += fail
 	}
 	return out, fetched, failed, prefetched
 }

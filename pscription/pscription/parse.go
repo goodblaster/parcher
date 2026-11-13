@@ -180,12 +180,8 @@ func (p *Pscription) applyDirective(key, val, baseDir string) error {
 	case "headful":
 		p.Headful = val == "true" || val == "yes" || val == "1"
 	case "profile":
-		path := val
-		if strings.HasPrefix(path, "~/") {
-			if home, err := os.UserHomeDir(); err == nil {
-				path = filepath.Join(home, path[2:])
-			}
-		} else if !filepath.IsAbs(path) {
+		path := ExpandHome(val)
+		if !filepath.IsAbs(path) {
 			path = filepath.Join(baseDir, path)
 		}
 		p.Profile = path
@@ -225,4 +221,17 @@ func (p *Pscription) mergeVarsFile(path string) error {
 		p.Vars[k] = v
 	}
 	return nil
+}
+
+// ExpandHome expands a leading "~" or "~/" to the user's home directory. The
+// one copy: there used to be three, none of which handled a bare "~".
+func ExpandHome(path string) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	return filepath.Join(home, strings.TrimPrefix(path, "~"))
 }

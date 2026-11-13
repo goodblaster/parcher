@@ -113,13 +113,22 @@ func convertOffline(ctx context.Context, req offlineRequest) (*capture.RenderRes
 func packBase(path, sourceURL string) string {
 	if path != stdinName {
 		if absolute, err := filepath.Abs(path); err == nil {
-			return "file://" + filepath.ToSlash(absolute)
+			return fileURL(absolute)
 		}
 	}
 	// Read from stdin there is no directory to resolve against, so the
 	// recorded address is the only base on offer. Archives arriving that way
 	// are self-contained anyway, with nothing relative left to resolve.
 	return sourceURL
+}
+
+// fileURL turns an absolute path into a file: URL, escaped. Concatenating
+// "file://" with the raw path is not one: a '%' in the name fails to parse,
+// a '#' truncates the path to a file that does not exist, and a space leaves
+// it unequal to the escaped prefix archiveBases builds, which silently
+// disabled fallbackBase for every browser-saved "Some Page.html".
+func fileURL(absolute string) string {
+	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(absolute)}).String()
 }
 
 // fallbackBase is the page's own address standing where the file on disk

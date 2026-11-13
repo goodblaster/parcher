@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/logos"
+	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
@@ -27,11 +27,11 @@ func FetchAndInjectImagesCached(cache *PrefetchCache) chromedp.ActionFunc {
 		}
 
 		if len(urls) == 0 {
-			logos.Info("no images to fetch")
+			log.Info("no images to fetch")
 			return nil
 		}
 
-		logos.With("count", len(urls)).Info("fetching images")
+		log.With("count", len(urls)).Info("fetching images")
 
 		// Step 2: Fetch all images (parallel, deduplicated) as data URLs,
 		// collecting whatever the prefetch already has in hand.
@@ -43,7 +43,7 @@ func FetchAndInjectImagesCached(cache *PrefetchCache) chromedp.ActionFunc {
 			urlToDataURL, fetched, failed = fetchAllAsDataURLs(ctx, urls, "image")
 		}
 
-		logos.With("fetched", fetched).With("failed", failed).
+		log.With("fetched", fetched).With("failed", failed).
 			With("prefetched", prefetched).Info("fetched images")
 
 		if len(urlToDataURL) == 0 {
@@ -51,15 +51,12 @@ func FetchAndInjectImagesCached(cache *PrefetchCache) chromedp.ActionFunc {
 		}
 
 		// Step 3: Inject the fetched images back into the page
-		var result map[string]interface{}
+		var result injectStats
 		err = chromedp.Run(ctx, js.InjectImages.Action(&result, urlToDataURL))
 		if err != nil {
 			return fmt.Errorf("failed to inject images: %w", err)
 		}
-
-		injected := int(result["injected"].(float64))
-		processed := int(result["processed"].(float64))
-		logos.With("injected", injected).With("processed", processed).Info("injected images")
+		log.With("injected", result.Injected).With("processed", result.Processed).Info("injected images")
 
 		return nil
 	}

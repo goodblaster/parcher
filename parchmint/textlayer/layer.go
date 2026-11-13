@@ -31,10 +31,41 @@ type Layer struct {
 	Viewport   Viewport        `json:"viewport"`
 	Stats      json.RawMessage `json:"stats"`
 	Blocks     []Block         `json:"blocks"`
-	Images     []Image         `json:"images,omitempty"`
+
+	// Hidden holds text the document carries but the page did not show: a
+	// collapsed <details>, an inactive tab, screen-reader-only labels. Same
+	// block shape as Blocks plus Why. It is a SEPARATE array, not a tag on
+	// Blocks, so that a reader which ignores unknown fields — an older parch,
+	// an external indexer — keeps seeing exactly the visible text. Ids
+	// continue the Blocks sequence, so a block id is unique across both.
+	Hidden []Block `json:"hidden,omitempty"`
+
+	Images []Image `json:"images,omitempty"`
 }
 
-// Image is a visible image recorded at capture time so `parch index` can
+// Reasons a block can be hidden (Block.Why). HiddenPrep is text hidden by
+// parch's own preparation (popup and overlay chrome), not by the page: it is
+// never included by "all" and never revealed.
+const (
+	HiddenDisplay    = "display"    // display:none — inactive tabs, closed dialogs
+	HiddenVisibility = "visibility" // visibility:hidden
+	HiddenOpacity    = "opacity"    // opacity:0 on the element or an ancestor
+	HiddenCollapsed  = "collapsed"  // closed <details>, content-visibility, hidden=until-found
+	HiddenClipped    = "clipped"    // overflow/clip/clip-path: sr-only text, zero-height accordions
+	HiddenOffscreen  = "offscreen"  // parked above/left of the page origin
+	HiddenZeroSize   = "zero-size"  // font-size:0 and friends
+	HiddenPrep       = "prep"       // hidden by parch's hide-overlays step
+
+	// HiddenAll, as a MatchOptions.Hidden entry, selects every reason except
+	// HiddenPrep.
+	HiddenAll = "all"
+)
+
+// HiddenReasons lists the valid Block.Why values.
+var HiddenReasons = []string{HiddenDisplay, HiddenVisibility, HiddenOpacity, HiddenCollapsed,
+	HiddenClipped, HiddenOffscreen, HiddenZeroSize, HiddenPrep}
+
+// Image is a visible image recorded at capture time so `parch ocr` can
 // OCR the archive's images and place words in page coordinates without a
 // browser. Hash is FNV-1a over the src string (see FNV1a), pairing the
 // entry with the archive's data-URI bytes.
@@ -53,7 +84,7 @@ type Viewport struct {
 }
 
 // Block is one paragraph-level unit: the phrase boundary for matching.
-// OCR blocks (added by `parch index`) carry Source "ocr", the source
+// OCR blocks (added by `parch ocr`) carry Source "ocr", the source
 // image's hash in Image, and a recognition Confidence; their words'
 // boxes are page coordinates derived from the image's recorded box.
 type Block struct {
@@ -68,6 +99,15 @@ type Block struct {
 	Source     string  `json:"source,omitempty"`
 	Image      string  `json:"image,omitempty"`
 	Confidence float64 `json:"confidence,omitempty"`
+
+	// Why is set on Layer.Hidden blocks only: the reason the text was not
+	// visible (one of HiddenReasons).
+	Why string `json:"why,omitempty"`
+
+	// Via marks a visible block whose text does not live in text nodes:
+	// "control" (a form control's value) or "svg" (SVG <text>). Every word
+	// carries the element's box, and marks outline the element.
+	Via string `json:"via,omitempty"`
 }
 
 // Box is [x, y, w, h] in page-space CSS pixels at the recorded viewport.

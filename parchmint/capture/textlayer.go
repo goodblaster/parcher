@@ -3,6 +3,8 @@ package capture
 import (
 	"context"
 	"encoding/json"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/goodblaster/errors"
@@ -21,6 +23,7 @@ type textLayerPayload struct {
 	Viewport json.RawMessage `json:"viewport"`
 	Stats    json.RawMessage `json:"stats"`
 	Blocks   json.RawMessage `json:"blocks"`
+	Hidden   json.RawMessage `json:"hidden"`
 	Images   json.RawMessage `json:"images"`
 }
 
@@ -37,11 +40,13 @@ func extractPayload(ctx context.Context, cacheRuns bool) (*textLayerPayload, err
 	var st struct {
 		Blocks           int      `json:"blocks"`
 		Words            int      `json:"words"`
+		HiddenBlocks     int      `json:"hiddenBlocks"`
 		OracleMismatches int      `json:"oracleMismatches"`
 		PageSimilarity   *float64 `json:"pageSimilarity"`
 	}
 	_ = json.Unmarshal(payload.Stats, &st)
-	l := log.With("blocks", st.Blocks).With("words", st.Words).With("oracleMismatches", st.OracleMismatches)
+	l := log.With("blocks", st.Blocks).With("words", st.Words).
+		With("hiddenBlocks", st.HiddenBlocks).With("oracleMismatches", st.OracleMismatches)
 	if st.PageSimilarity != nil {
 		l = l.With("pageSimilarity", *st.PageSimilarity)
 	}
@@ -54,6 +59,20 @@ func extractPayload(ctx context.Context, cacheRuns bool) (*textLayerPayload, err
 // owns it (for per-term colors).
 type markEntry struct {
 	Ranges [][3]int `json:"ranges"`
+}
+
+// MarkCounts reports what a marking pass matched.
+type MarkCounts struct {
+	// Visible is matches in text the page shows, all of them marked.
+	Visible int
+	// Hidden is matches in hidden text that were marked AND revealed — only
+	// ever non-zero when the caller both asked for hidden text
+	// (MatchOptions.Hidden) and allowed revealing.
+	Hidden int
+	// HiddenUnmarked is matches sitting in hidden text that were left alone:
+	// not asked for, or not revealable here. Reported so the caller can say
+	// "N more in hidden text" instead of silently under-counting.
+	HiddenUnmarked int
 }
 
 // applyHighlights matches the phrases against an extracted payload and
@@ -73,27 +92,106 @@ type markEntry struct {
 // DISJOINT per-block spans with "last term wins" on overlap, because the
 // JS marker must wrap everything in one back-to-front pass against the
 // cached extraction (a second pass would see nodes the first one split).
-func applyHighlights(ctx context.Context, payload *textLayerPayload, phrases []string, match textlayer.MatchOptions, colors []string, style string) (int, error) {
-	var blocks []textlayer.Block
+//
+// Hidden text: a <mark> inside a collapsed section is a highlight nobody can
+// see, and counting it as a match is a lie. So hidden blocks are matched
+// separately and marked only when BOTH match.Hidden asks for them and reveal
+// is true — in which case reveal_hidden.js first un-hides each matched block
+// (labelling it as revealed) and the marks then land on visible text.
+// reveal is false at capture time: an archive is the page as it was, and
+// only a marked COPY may show what the page did not. Text hidden by parch's
+// own prep (popup chrome) is never marked or revealed.
+func applyHighlights(ctx context.Context, payload *textLayerPayload, phrases []string, match textlayer.MatchOptions, colors []string, style string, reveal bool) (MarkCounts, error) {
+	var counts MarkCounts
+	var blocks, hidden []textlayer.Block
 	if err := json.Unmarshal(payload.Blocks, &blocks); err != nil {
-		return 0, errors.Wrap(err, "parse blocks")
+		return counts, errors.Wrap(err, "parse blocks")
+	}
+	if len(payload.Hidden) > 0 {
+		if err := json.Unmarshal(payload.Hidden, &hidden); err != nil {
+			return counts, errors.Wrap(err, "parse hidden blocks")
+		}
 	}
 
+	// Three views of the same query: visible text, the hidden text that was
+	// asked for, and all hidden text (to count what was left out).
+	visOpts := match
+	visOpts.Hidden, visOpts.HiddenOnly = nil, false
+	wantOpts := match
+	wantOpts.HiddenOnly = true
+	anyOpts := match
+	anyOpts.Hidden, anyOpts.HiddenOnly = []string{textlayer.HiddenAll}, true
+	wantHidden := reveal && len(match.Hidden) > 0
+
 	hitsByTerm := make([][]textlayer.Hit, len(phrases))
-	total := 0
+	revealIDs := map[int]bool{}
 	for ti, phrase := range phrases {
-		m, err := textlayer.Compile(phrase, match)
+		vis, err := textlayer.Compile(phrase, visOpts)
 		if err != nil {
-			return 0, err
+			return counts, err
 		}
-		for i := range blocks {
-			hitsByTerm[ti] = append(hitsByTerm[ti], m.FindBlock(&blocks[i])...)
+		if !match.HiddenOnly {
+			for i := range blocks {
+				hits := vis.FindBlock(&blocks[i])
+				hitsByTerm[ti] = append(hitsByTerm[ti], hits...)
+				counts.Visible += len(hits)
+			}
 		}
-		total += len(hitsByTerm[ti])
+
+		anyM, err := textlayer.Compile(phrase, anyOpts)
+		if err != nil {
+			return counts, err
+		}
+		var wantM textlayer.Matcher
+		if wantHidden {
+			if wantM, err = textlayer.Compile(phrase, wantOpts); err != nil {
+				return counts, err
+			}
+		}
+		for i := range hidden {
+			b := &hidden[i]
+			if b.Why == textlayer.HiddenPrep {
+				continue
+			}
+			if wantM != nil {
+				if hits := wantM.FindBlock(b); len(hits) > 0 {
+					hitsByTerm[ti] = append(hitsByTerm[ti], hits...)
+					counts.Hidden += len(hits)
+					revealIDs[b.ID] = true
+					continue
+				}
+			}
+			counts.HiddenUnmarked += len(anyM.FindBlock(b))
+		}
+	}
+
+	total := counts.Visible + counts.Hidden
+	l := log.With("phrases", len(phrases)).With("matches", total)
+	if counts.Hidden+counts.HiddenUnmarked > 0 {
+		l = l.With("hiddenMarked", counts.Hidden).With("hiddenUnmarked", counts.HiddenUnmarked)
 	}
 	if total == 0 {
-		log.With("phrases", len(phrases)).With("matches", 0).Info("highlighting matches")
-		return 0, nil
+		l.Info("highlighting matches")
+		return counts, nil
+	}
+
+	if len(revealIDs) > 0 {
+		ids := make([]int, 0, len(revealIDs))
+		for id := range revealIDs {
+			ids = append(ids, id)
+		}
+		sort.Ints(ids)
+		var st struct {
+			Revealed   int `json:"revealed"`
+			Unresolved int `json:"unresolved"`
+		}
+		if err := js.RevealHidden.Action(&st, ids).Do(ctx); err != nil {
+			return counts, errors.Wrap(err, "reveal hidden text")
+		}
+		if st.Unresolved > 0 {
+			log.With("blocks", st.Unresolved).Warn("some hidden text could not be made visible; its marks are in the document but may not show")
+		}
+		l = l.With("revealed", st.Revealed)
 	}
 
 	marks := map[int]markEntry{}
@@ -110,11 +208,10 @@ func applyHighlights(ctx context.Context, payload *textLayerPayload, phrases []s
 		Skipped int `json:"skipped"`
 	}
 	if err := js.ApplyTextMarks.Action(&st, marks, map[string]any{"colors": colors, "style": style}).Do(ctx); err != nil {
-		return 0, errors.Wrap(err, "apply text marks")
+		return counts, errors.Wrap(err, "apply text marks")
 	}
-	log.With("phrases", len(phrases)).With("matches", total).
-		With("marked", st.Marked).With("skipped", st.Skipped).Info("highlighting matches")
-	return total, nil
+	l.With("marked", st.Marked).With("skipped", st.Skipped).Info("highlighting matches")
+	return counts, nil
 }
 
 // composeLayer wraps an extraction payload with the archive header,
@@ -128,6 +225,7 @@ func composeLayer(snap *Snapshot, payload *textLayerPayload) ([]byte, error) {
 		Viewport   json.RawMessage `json:"viewport"`
 		Stats      json.RawMessage `json:"stats"`
 		Blocks     json.RawMessage `json:"blocks"`
+		Hidden     json.RawMessage `json:"hidden,omitempty"`
 		Images     json.RawMessage `json:"images,omitempty"`
 	}{
 		Format:     textlayer.Format,
@@ -137,6 +235,7 @@ func composeLayer(snap *Snapshot, payload *textLayerPayload) ([]byte, error) {
 		Viewport:   payload.Viewport,
 		Stats:      payload.Stats,
 		Blocks:     payload.Blocks,
+		Hidden:     nonEmptyArray(payload.Hidden),
 		Images:     payload.Images,
 	}
 	out, err := json.Marshal(layer)
@@ -144,6 +243,15 @@ func composeLayer(snap *Snapshot, payload *textLayerPayload) ([]byte, error) {
 		return nil, errors.Wrap(err, "marshal text layer")
 	}
 	return out, nil
+}
+
+// nonEmptyArray drops a JSON array that is absent or empty, so the layer
+// omits the field instead of carrying "hidden": [].
+func nonEmptyArray(raw json.RawMessage) json.RawMessage {
+	if t := strings.TrimSpace(string(raw)); t == "" || t == "[]" || t == "null" {
+		return nil
+	}
+	return raw
 }
 
 // spliceTextLayer embeds the layer in the serialized archive (see

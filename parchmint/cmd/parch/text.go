@@ -20,14 +20,17 @@ func runTextCommand(args []string) {
 	fs := flag.NewFlagSet("text", flag.ExitOnError)
 	asJSON := fs.Bool("json", false, "print the raw text layer as indented JSON")
 	asBlocks := fs.Bool("blocks", false, "one JSON object per block, newline-delimited — paragraph feed for external indexers (Elasticsearch bulk, jq)")
+	hidden := registerHidden(fs, "also print text the page hides (collapsed sections, inactive tabs, screen-reader text), after the visible text; --blocks tags each with its reason.")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s text [--json|--blocks] <archive.html> ('-' = stdin)\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s text [--json|--blocks] [--hidden] <archive.html|.mht|.pdf> ('-' = stdin)\n\n", os.Args[0])
 		fmt.Fprintln(os.Stderr, "--blocks emits NDJSON: each line is one paragraph-level block with the")
 		fmt.Fprintln(os.Stderr, "archive identity (url, capturedAt) repeated, so every line stands")
 		fmt.Fprintln(os.Stderr, "alone as an indexable document. Note the text is RAW rendered text —")
 		fmt.Fprintln(os.Stderr, "it can contain soft hyphens, zero-width characters, and curly quotes;")
 		fmt.Fprintln(os.Stderr, "index it with a folding analyzer (e.g. icu_folding) or matching will")
 		fmt.Fprintln(os.Stderr, "under-recall. Block ids are stable only within one archive.")
+		fmt.Fprintln(os.Stderr, "\n--json prints the layer as stored, hidden text included (its `hidden`")
+		fmt.Fprintln(os.Stderr, "array); --hidden applies to the plain-text and --blocks forms.")
 		fmt.Fprintln(os.Stderr, "\nOptions:")
 		fs.PrintDefaults()
 	}
@@ -57,15 +60,20 @@ func runTextCommand(args []string) {
 		return
 	}
 
+	blocks, err := selectBlocks(layer, hiddenReasons(*hidden))
+	if err != nil {
+		usageErr(err)
+	}
+
 	if *asBlocks {
-		if err := writeBlockLines(os.Stdout, fs.Arg(0), layer); err != nil {
+		if err := writeBlockLines(os.Stdout, fs.Arg(0), layer, blocks); err != nil {
 			fmt.Fprintln(os.Stderr, "parch: "+err.Error())
 			os.Exit(1)
 		}
 		return
 	}
 
-	for i, b := range layer.Blocks {
+	for i, b := range blocks {
 		if i > 0 {
 			fmt.Println()
 		}
@@ -87,16 +95,18 @@ type blockLine struct {
 	Image      string  `json:"image,omitempty"`
 	Confidence float64 `json:"confidence,omitempty"`
 	Frame      string  `json:"frame,omitempty"`
+	Hidden     string  `json:"hidden,omitempty"`
+	Via        string  `json:"via,omitempty"`
 	Text       string  `json:"text"`
 }
 
 // writeBlockLines emits the layer's blocks as NDJSON, one standalone
 // document per line.
-func writeBlockLines(w io.Writer, archive string, layer *textlayer.Layer) error {
+func writeBlockLines(w io.Writer, archive string, layer *textlayer.Layer, blocks []textlayer.Block) error {
 	bw := bufio.NewWriter(w)
 	enc := json.NewEncoder(bw)
 	enc.SetEscapeHTML(false)
-	for _, b := range layer.Blocks {
+	for _, b := range blocks {
 		line := blockLine{
 			Archive:    archive,
 			URL:        layer.URL,
@@ -107,6 +117,8 @@ func writeBlockLines(w io.Writer, archive string, layer *textlayer.Layer) error 
 			Image:      b.Image,
 			Confidence: b.Confidence,
 			Frame:      b.Frame,
+			Hidden:     b.Why,
+			Via:        b.Via,
 			Text:       b.Text,
 		}
 		if err := enc.Encode(line); err != nil {

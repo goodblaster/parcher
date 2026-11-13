@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/parcher/pscription/agents"
 	"github.com/goodblaster/parcher/pscription/internal/config"
 )
 
@@ -33,7 +32,12 @@ type Config struct {
 	// without changing a single breakpoint. Zero means 1.0.
 	DeviceScaleFactor float64
 
-	// Browser user agent string
+	// UserAgent is the user agent string to announce. Empty — the default —
+	// means the running browser's own, with the "Headless" marker removed
+	// and matching client hints: the page sees the Chrome that is actually
+	// rendering it, at its real version. A non-empty value is sent verbatim
+	// with no client hints (agents has constants, including the Safari string
+	// that used to be the default).
 	UserAgent string
 
 	// CSS selector to wait for after navigation
@@ -84,11 +88,12 @@ type Config struct {
 // DefaultConfig returns sensible defaults
 func DefaultConfig() Config {
 	return Config{
-		Timeout:           3000 * time.Second,
+		// A backstop only: callers bound the session with their own context.
+		// It was 3000s, which left a library user with a fifty-minute hang.
+		Timeout:           5 * time.Minute,
 		ViewportWidth:     config.ViewWidth,
 		ViewportHeight:    config.ViewHeight,
 		DeviceScaleFactor: 1.0,
-		UserAgent:         agents.Current,
 		WaitFor:           "body",
 		InitialWait:       1 * time.Second,
 	}

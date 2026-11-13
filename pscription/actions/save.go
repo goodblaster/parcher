@@ -11,7 +11,7 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/logos"
+	"github.com/goodblaster/parcher/pscription/internal/log"
 )
 
 func SaveScreenshotToDisk(filename string) chromedp.ActionFunc {
@@ -34,7 +34,7 @@ func SaveScreenshotToDisk(filename string) chromedp.ActionFunc {
 			return errors.Wrap(err, "failed to save screenshot")
 		}
 
-		logos.With("filename", filename).Debug("screenshot saved")
+		log.With("filename", filename).Debug("screenshot saved")
 		return nil
 	}
 }

@@ -2,6 +2,11 @@ package runner
 
 import (
 	"context"
+	goruntime "runtime"
+	"strings"
+
+	"github.com/chromedp/cdproto/browser"
+	"github.com/goodblaster/parcher/pscription/agents"
 
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
@@ -44,10 +49,13 @@ func (s *Session) Context() context.Context { return s.ctx }
 func Start(ctx context.Context, url string, cfg Config) (*Session, error) {
 	ctx, cancel := createBrowserContext(ctx, cfg)
 
-	// Auto-accept JavaScript dialogs (alert/confirm/beforeunload).
+	// Auto-accept JavaScript dialogs (alert/confirm/beforeunload). The
+	// answer goes out from its own goroutine: listeners run on the goroutine
+	// that delivers CDP responses, so a synchronous Run here never gets its
+	// reply — an alert() during load hung the session until the timeout.
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		if _, ok := ev.(*page.EventJavascriptDialogOpening); ok {
-			_ = chromedp.Run(ctx, page.HandleJavaScriptDialog(true))
+			go func() { _ = chromedp.Run(ctx, page.HandleJavaScriptDialog(true)) }()
 		}
 	})
 
@@ -66,7 +74,7 @@ func Start(ctx context.Context, url string, cfg Config) (*Session, error) {
 		h = config.ViewHeight
 	}
 	tasks := []chromedp.Action{
-		emulation.SetUserAgentOverride(cfg.UserAgent),
+		userAgentAction(cfg.UserAgent),
 		emulation.SetDeviceMetricsOverride(cfg.ViewportWidth, h, dpr, false),
 	}
 	tasks = append(tasks, cfg.PreNavigate...)
@@ -141,4 +149,59 @@ func createBrowserContext(ctx context.Context, cfg Config) (context.Context, con
 		cancel2()
 		cancel1()
 	}
+}
+
+// userAgentAction sets the session's user agent. An explicit one is sent as
+// given. Otherwise the browser's own is used with the headless marker
+// removed, plus client hints that agree with it: headless Chrome announces
+// itself as "HeadlessChrome" in both, which sites treat as a bot, and an
+// override that fixes only the string leaves sec-ch-ua contradicting it.
+func userAgentAction(explicit string) chromedp.Action {
+	return chromedp.ActionFunc(func(ctx context.Context) error {
+		if explicit != "" {
+			return emulation.SetUserAgentOverride(explicit).Do(ctx)
+		}
+		_, product, _, ua, _, err := browser.GetVersion().Do(ctx)
+		if err != nil || ua == "" {
+			return emulation.SetUserAgentOverride(agents.Current).Do(ctx)
+		}
+		ua = strings.ReplaceAll(ua, "HeadlessChrome", "Chrome")
+
+		// product is "Chrome/141.0.7390.55" (or "HeadlessChrome/…").
+		full := product
+		if i := strings.IndexByte(product, '/'); i >= 0 {
+			full = product[i+1:]
+		}
+		major, _, _ := strings.Cut(full, ".")
+		platform, platformVersion, arch := "Linux", "", "x86"
+		switch {
+		case strings.Contains(ua, "Macintosh"):
+			platform, platformVersion = "macOS", "15.0.0"
+		case strings.Contains(ua, "Windows"):
+			platform, platformVersion = "Windows", "15.0.0"
+		}
+		if goruntime.GOARCH == "arm64" {
+			arch = "arm"
+		}
+		brands := []*emulation.UserAgentBrandVersion{
+			{Brand: "Chromium", Version: major},
+			{Brand: "Google Chrome", Version: major},
+			{Brand: "Not?A_Brand", Version: "99"},
+		}
+		return emulation.SetUserAgentOverride(ua).
+			WithUserAgentMetadata(&emulation.UserAgentMetadata{
+				Brands: brands,
+				FullVersionList: []*emulation.UserAgentBrandVersion{
+					{Brand: "Chromium", Version: full},
+					{Brand: "Google Chrome", Version: full},
+					{Brand: "Not?A_Brand", Version: "99.0.0.0"},
+				},
+				Platform:        platform,
+				PlatformVersion: platformVersion,
+				Architecture:    arch,
+				Bitness:         "64",
+				Model:           "",
+				Mobile:          false,
+			}).Do(ctx)
+	})
 }

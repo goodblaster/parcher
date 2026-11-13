@@ -1,7 +1,7 @@
 # parcher — parch (page archiver) and pscribe (browser script runner).
 #
 # Both commands build into ./bin. `go install ./...` also works, but leaves
-# parch reporting version "dev": the version is stamped through -ldflags,
+# both reporting version "dev": the version is stamped through -ldflags,
 # and only this Makefile derives it from git.
 
 BIN     := bin
@@ -11,7 +11,7 @@ LDFLAGS := -X main.version=$(VERSION)
 PARCH   := ./parchmint/cmd/parch
 PSCRIBE := ./pscription/cmd/pscribe
 
-.PHONY: all build install test vet clean check help
+.PHONY: all build install test vet lint probe clean check help
 
 all: build ## Build both commands (default)
 
@@ -28,6 +28,18 @@ test: ## Run every test
 
 vet: ## go vet the whole tree
 	go vet ./...
+
+# Run from the module's own toolchain (go run), not from whatever copy is on
+# PATH: a staticcheck built with an older Go refuses a newer module outright.
+STATICCHECK := honnef.co/go/tools/cmd/staticcheck@latest
+GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@latest
+
+lint: vet ## vet + staticcheck + govulncheck (downloads the tools on first run)
+	go run $(STATICCHECK) ./...
+	go run $(GOVULNCHECK) ./...
+
+probe: ## Browser-driven probe suite: silent-loss checks on a local page (needs Chrome)
+	PARCH_BROWSER_TESTS=1 go test -count=1 -run Probe ./parchmint/capture/
 
 clean: ## Remove ./bin
 	rm -rf $(BIN)

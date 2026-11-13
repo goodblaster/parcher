@@ -12,19 +12,30 @@ import (
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/goodblaster/errors"
-	"github.com/goodblaster/logos"
 	"github.com/goodblaster/parcher/pscription/internal/config"
+	"github.com/goodblaster/parcher/pscription/internal/log"
 )
 
 type ScriptFile string
 
-// Source returns the script's JavaScript source, honoring dev-mode
-// (gb_env=dev) reload from disk.
+// devScriptsDir is where dev-mode reload reads scripts from, instead of the
+// copies embedded in the binary: PSCRIPTION_SCRIPTS_DIR names the scripts
+// directory itself (the one holding page-prep/, extract/, …), so an edit to a
+// .js file takes effect on the next run with no rebuild.
+//
+// It replaced gb_env=dev, which read "scripts/<file>" relative to the working
+// directory — a path that stopped existing when the two repositories merged
+// (the directory is pscription/scripts now), so the switch silently failed
+// every script read from the repository root.
+func devScriptsDir() string { return os.Getenv("PSCRIPTION_SCRIPTS_DIR") }
+
+// Source returns the script's JavaScript source, honoring dev-mode reload
+// from disk (see devScriptsDir).
 func (sf ScriptFile) Source() (string, error) {
-	if os.Getenv("gb_env") == "dev" {
-		b, err := os.ReadFile(filepath.Join("scripts", string(sf)))
+	if dir := devScriptsDir(); dir != "" {
+		b, err := os.ReadFile(filepath.Join(dir, string(sf)))
 		if err != nil {
-			return "", errors.Wrapf(err, "failed to read script file %q", sf)
+			return "", errors.Wrapf(err, "failed to read script file %q from PSCRIPTION_SCRIPTS_DIR", sf)
 		}
 		return string(b), nil
 	}
@@ -37,28 +48,19 @@ func (sf ScriptFile) Source() (string, error) {
 
 func (sf ScriptFile) Action(res any, params ...any) chromedp.ActionFunc {
 	return func(ctx context.Context) error {
-		if config.ProfileJson {
+		if config.ProfileScripts {
 			start := time.Now()
 			defer func() {
-				logos.With("script", sf).With("duration", time.Since(start)).Info("script execution time")
+				log.With("script", sf).With("duration", time.Since(start)).Info("script execution time")
 			}()
 		}
 
-		var script []byte
-		var err error
-
-		if os.Getenv("gb_env") == "dev" {
-			// Read from disk, instead.
-			script, err = os.ReadFile(filepath.Join("scripts", string(sf)))
-		} else {
-			script, err = Files.ReadFile(string(sf))
-		}
-
+		script, err := sf.Source()
 		if err != nil {
-			return errors.Wrapf(err, "failed to read script file %q", sf)
+			return err
 		}
 
-		if err := EvalSource(ctx, string(script), res, params...); err != nil {
+		if err := EvalSource(ctx, script, res, params...); err != nil {
 			return errors.Wrapf(err, "script file %q", sf)
 		}
 		return nil
@@ -147,16 +149,12 @@ func stripLeadingComments(s string) string {
 	}
 }
 
-func (sf ScriptFile) prep(params ...any) (string, error) {
-	return encodeParams(params...)
-}
-
 // ActionNoError runs the script like Action (including async handling and
 // dev-mode reload) but logs failures instead of returning them.
 func (sf ScriptFile) ActionNoError(res any, params ...any) chromedp.ActionFunc {
 	return func(ctx context.Context) error {
 		if err := sf.Action(res, params...)(ctx); err != nil {
-			logos.With("error", err).With("script", sf).Error("failed to evaluate script")
+			log.WithError(err).With("script", sf).Error("failed to evaluate script")
 		}
 		return nil
 	}

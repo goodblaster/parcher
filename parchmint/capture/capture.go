@@ -89,8 +89,15 @@ type Options struct {
 	Highlight []string
 
 	// Match selects how the Highlight phrases match (zero value = the
-	// default phrase matcher).
+	// default phrase matcher). Match.Hidden is ignored here: a capture never
+	// reveals hidden text, so there is nothing visible to mark in it.
 	Match textlayer.MatchOptions
+
+	// MarkColors gives Highlight phrase i its own color; MarkStyle picks the
+	// mark presentation (bg, underline, box, bold). Same meaning as on
+	// RenderOptions.
+	MarkColors []string
+	MarkStyle  string
 
 	// PaperWidthIn and PaperHeightIn size the PDF sheet (see Snapshot).
 	// Ignored by every other backend.
@@ -134,23 +141,16 @@ func CaptureWithOptions(ctx context.Context, url string, cfg runner.Config, reci
 	// defect this guards against is intermittent by nature, so a second
 	// attempt that measures EXACTLY what the first one did is not going to
 	// come out differently — it just costs another full pass. Bail on a
-	// repeat rather than burning the whole attempt budget.
+	// repeat rather than burning the whole attempt budget — and serialize
+	// the session that saw the repeat, since a fresh one would be exactly
+	// the extra pass the bail exists to avoid.
 	var lastSig string
 	for attempt := 1; ; attempt++ {
-		snap, sig, defect, err := captureOnce(ctx, url, cfg, recipe, backend, opts, attempt < maxCaptureAttempts)
+		snap, sig, defect, err := captureOnce(ctx, url, cfg, recipe, backend, opts, attempt < maxCaptureAttempts, lastSig)
 		if err != nil {
 			return nil, errors.Wrapf(err, "%s capture failed", backend.Name())
 		}
 		if !defect {
-			return snap, nil
-		}
-		if sig != "" && sig == lastSig {
-			log.With("attempt", attempt).With("url", url).With("evidence", sig).
-				Warn("layout defect unchanged since the last attempt; not transient, capturing as-is")
-			snap, _, _, err = captureOnce(ctx, url, cfg, recipe, backend, opts, false)
-			if err != nil {
-				return nil, errors.Wrapf(err, "%s capture failed", backend.Name())
-			}
 			return snap, nil
 		}
 		lastSig = sig
@@ -161,8 +161,10 @@ func CaptureWithOptions(ctx context.Context, url string, cfg runner.Config, reci
 
 // captureOnce runs one prepare+capture pass. When retryable is true it checks
 // for a layout defect BEFORE serializing (so a doomed attempt doesn't waste
-// backend work) and, if found, returns defect=true with no snapshot.
-func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipeline.Recipe, backend Backend, opts Options, retryable bool) (snap *Snapshot, signature string, defect bool, err error) {
+// backend work) and, if found, returns defect=true with no snapshot — unless
+// the evidence matches prevSig, the previous attempt's, in which case the
+// defect is not transient and this session is serialized as-is.
+func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipeline.Recipe, backend Backend, opts Options, retryable bool, prevSig string) (snap *Snapshot, signature string, defect bool, err error) {
 	session, err := runner.Start(ctx, url, cfg)
 	if err != nil {
 		return nil, signature, false, err
@@ -191,6 +193,11 @@ func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipe
 			log.With("url", url).Debug("slider not yet initialized; recovering in-session")
 			_ = session.Run(js.WaitForSliders.Action(nil, 5000))
 			_ = session.Run(detectDefect(&defect, &signature))
+		}
+		if defect && signature != "" && signature == prevSig {
+			log.With("url", url).With("evidence", signature).
+				Warn("layout defect unchanged since the last attempt; not transient, capturing as-is")
+			defect = false
 		}
 		if defect {
 			return nil, signature, true, nil
@@ -227,8 +234,12 @@ func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipe
 				return nil
 			}
 			if len(opts.Highlight) > 0 {
-				if _, err := applyHighlights(ctx, payload, opts.Highlight, opts.Match, nil, ""); err != nil {
+				counts, err := applyHighlights(ctx, payload, opts.Highlight, opts.Match, opts.MarkColors, opts.MarkStyle, false)
+				if err != nil {
 					log.WithError(err).Warn("highlighting failed; archiving without marks")
+				} else if counts.HiddenUnmarked > 0 {
+					log.With("matches", counts.HiddenUnmarked).
+						Info("more matches sit in text the page hides; `parch mark --hidden` on the archive reveals and marks them")
 				}
 			}
 			if opts.TextLayer {

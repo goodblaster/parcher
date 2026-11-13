@@ -1,4 +1,4 @@
-# A pscription used as parch's prep (parch --pscribe). parch runs these steps to
+# A pscription used as parch's prep (parch --recipe). parch runs these steps to
 # prepare the page, then serializes it. Same .rx format pscribe uses, so you can
 # mix built-in steps with your own scripts before archiving.
 #

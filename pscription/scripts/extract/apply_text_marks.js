@@ -11,6 +11,10 @@
 // between terms already resolved, last term wins), which is what keeps
 // the single back-to-front wrap pass valid — see below.
 //
+// A cache entry that is not an array is a whole-element block — a form
+// control or SVG <text>, whose text is not in wrappable text nodes; see
+// markElement.
+//
 // opts (optional): { colors: [cssColor, …] per term — missing/empty =
 // the default <mark> look; style: 'bg' | 'underline' | 'box' | 'bold' }.
 // Styling is inline on each <mark>, so it survives serialization with no
@@ -61,10 +65,49 @@ function applyTextMarks(marks, opts) {
         }
     }
 
+    function markElement(entry, color) {
+        const el = entry.el;
+        if (!el || !el.isConnected) return false;
+        try {
+            if (entry.via === 'svg' && typeof el.getBBox === 'function') {
+                const box = el.getBBox();
+                const rect = el.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('data-parchmint', 'mark');
+                rect.setAttribute('x', box.x - 1);
+                rect.setAttribute('y', box.y - 1);
+                rect.setAttribute('width', box.width + 2);
+                rect.setAttribute('height', box.height + 2);
+                rect.setAttribute('fill', color || 'yellow');
+                rect.setAttribute('fill-opacity', '0.5');
+                rect.setAttribute('pointer-events', 'none');
+                const t = el.getAttribute('transform');
+                if (t) rect.setAttribute('transform', t);
+                el.before(rect);
+                return true;
+            }
+            el.setAttribute('data-parchmint-mark', 'control');
+            el.style.setProperty('outline', '3px solid ' + (color || 'gold'), 'important');
+            el.style.setProperty('outline-offset', '1px', 'important');
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
     for (const blockId in marks) {
         const map = cache[blockId];
         if (!map) {
             stats.skipped += marks[blockId].ranges.length;
+            continue;
+        }
+        // A whole-element block (form control, SVG <text>): there are no
+        // text nodes to wrap, so the element itself is marked — an outline
+        // on a control, a backing rect behind SVG text.
+        if (!Array.isArray(map)) {
+            const n = marks[blockId].ranges.length;
+            const term = n > 0 ? marks[blockId].ranges[n - 1][2] : 0;
+            if (markElement(map, colors[term] || '')) stats.marked += n;
+            else stats.skipped += n;
             continue;
         }
         const ranges = marks[blockId].ranges.slice().sort((a, b) => b[0] - a[0]);

@@ -4,14 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"net/http"
 	neturl "net/url"
 	"strings"
-	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/logos"
+	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
@@ -44,16 +42,16 @@ func FetchAndInjectFonts() chromedp.ActionFunc {
 			return fmt.Errorf("failed to extract font faces: %w", err)
 		}
 		if len(faces) == 0 {
-			logos.Info("no web fonts to fetch")
+			log.Info("no web fonts to fetch")
 			return nil
 		}
 
-		client := &http.Client{Timeout: 30 * time.Second}
 		var css strings.Builder
 		embedded, failed := 0, 0
+		userAgent := fetchUserAgent(ctx)
 
 		for _, face := range faces {
-			dataURL, format, ok := fetchFirstFont(client, face.URLs)
+			dataURL, format, ok := fetchFirstFont(ctx, fetchClient, face.URLs, userAgent)
 			if !ok {
 				failed++
 				continue
@@ -84,7 +82,7 @@ func FetchAndInjectFonts() chromedp.ActionFunc {
 			embedded++
 		}
 
-		logos.With("embedded", embedded).With("failed", failed).Info("embedded web fonts")
+		log.With("embedded", embedded).With("failed", failed).Info("embedded web fonts")
 		if embedded == 0 {
 			return nil
 		}
@@ -97,13 +95,13 @@ func FetchAndInjectFonts() chromedp.ActionFunc {
 
 // fetchFirstFont fetches the first URL that succeeds, returning its data URL
 // and a CSS format() hint.
-func fetchFirstFont(client *http.Client, urls []string) (dataURL, format string, ok bool) {
+func fetchFirstFont(ctx context.Context, client *http.Client, urls []string, userAgent string) (dataURL, format string, ok bool) {
 	for _, url := range urls {
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			continue
 		}
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("Accept", "*/*")
 		// Many sites hotlink-protect fonts by Referer; present one matching
 		// the font's own origin so the fetch looks same-site.
@@ -114,7 +112,7 @@ func fetchFirstFont(client *http.Client, urls []string) (dataURL, format string,
 		if err != nil {
 			continue
 		}
-		data, err := io.ReadAll(resp.Body)
+		data, err := readCapped(resp.Body, maxResourceBytes)
 		resp.Body.Close()
 		if err != nil || resp.StatusCode != http.StatusOK || len(data) == 0 {
 			continue

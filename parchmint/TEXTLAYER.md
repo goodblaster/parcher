@@ -10,7 +10,7 @@ catalog/indexing application.
 
 HTML and MHT archives carry it at capture time. A **PDF** carries it too,
 but PDF is a *rendered view* produced downstream from an archive (`parch
-pdf <archive>`), not a capture format — see "PDF" below. The pixel raster
+render -f pdf <archive>`), not a capture format — see "PDF" below. The pixel raster
 formats (png/jpeg/webp) have no text layer.
 
 ## Placement
@@ -27,7 +27,7 @@ consumers unescape after slicing.
 quoted-printable entirely), `Content-Location: parchmint:text-layer`.
 multipart/related readers render only referenced parts, so browsers carry
 the layer along silently. Same capabilities either way: `parch
-text`/`find`/`index`/`mark` sniff the container and behave identically,
+text`/`find`/`ocr`/`mark` sniff the container and behave identically,
 and a marked copy keeps its source's format — `mark` on an .mht writes a
 .marked.mht by putting the marked document back into the container
 (stylesheets inlined from the CSSOM; all other parts kept, so cid:
@@ -49,7 +49,7 @@ it back out. A PDF actually carries *four* searchable/visible layers:
 4. **the attached JSON layer** — full `parchmint-text/1`, so `parch
    text`/`find` on a `.pdf` behave exactly as on `.html`/`.mht`.
 Because a `printToPDF` bakes images as XObjects (not data URIs), `parch
-index`/`mark` do NOT operate on a `.pdf` — index and highlight the source
+ocr`/`mark` do NOT operate on a `.pdf` — OCR and highlight the source
 archive, then (re-)export.
 
 ## Format: `parchmint-text/1`
@@ -61,7 +61,8 @@ archive, then (re-)export.
   "capturedAt": "2026-07-19T13:24:51Z",
   "viewport": { "width": 1600, "dpr": 1 },
   "generator": "parch",
-  "stats": { "blocks": 120, "words": 4321, "oracleMismatches": 0, "pageSimilarity": 0.998 },
+  "stats": { "blocks": 120, "words": 4321, "hiddenBlocks": 9, "hiddenWords": 240,
+             "oracleMismatches": 0, "pageSimilarity": 0.998 },
   "blocks": [
     {
       "id": 42,
@@ -72,6 +73,14 @@ archive, then (re-)export.
       "text": "Hello, world — one paragraph as a human reads it.",
       "words": [[0, 6, 64, 980, 52, 22], [7, 12, 120, 980, 46, 22]],
       "oracle": "mismatch"
+    }
+  ],
+  "hidden": [
+    {
+      "id": 120, "type": "p", "node": "1/3/2/0", "why": "collapsed",
+      "box": [0, 0, 0, 0],
+      "text": "Returns accepted within thirty days.",
+      "words": [[0, 7, 0, 0, 0, 0], [8, 16, 0, 0, 0, 0]]
     }
   ]
 }
@@ -103,8 +112,11 @@ archive, then (re-)export.
   roots pierced, slots resolved, same-origin iframes walked (coordinates
   offset to the top page), cross-origin iframes excluded (the capture
   pipeline froze them to images). Block boundaries come from *computed*
-  display (the anonymous-box rule), never tag names. Text with no client
-  rects is not rendered and is not in the layer.
+  display (the anonymous-box rule), never tag names.
+- **`blocks` is what a human sees — nothing else.** Text the document
+  carries but does not show is not dropped; it is filed under `hidden`
+  (next section). A reader that only knows `blocks` therefore indexes
+  exactly the visible page.
 - `type` is the container's tag when meaningful
   (`p`, `h1`–`h6`, `li`, `td`, `th`, `caption`, `pre`, `blockquote`),
   else `other` (includes anonymous inline runs).
@@ -120,6 +132,95 @@ archive, then (re-)export.
   (42 of them) was a citation's `cite-accessibility-label` ("Jump up
   to:"), with the citation text itself complete. Treat the count as a
   pointer to *investigate*, not evidence of a defect.
+
+## Hidden text
+
+A page carries more text than it shows: the collapsed FAQ answer, the tab
+that is not selected, the "read more" body, a screen-reader label. Someone
+keeping a page may well want to find those words later, so the layer
+**classifies** hidden text rather than discarding it.
+
+`hidden` is a second top-level array with the same block shape as `blocks`
+plus `why`:
+
+| `why` | The text was hidden by | Typical content |
+|---|---|---|
+| `display` | `display:none`, the `hidden` attribute | inactive tab panels, closed dialogs, menus |
+| `visibility` | `visibility:hidden` | |
+| `opacity` | `opacity:0` on the element or an ancestor (not mid-animation) | faded-out panels |
+| `collapsed` | a closed `<details>`, `content-visibility:hidden`, `hidden="until-found"` | accordions the browser's own find-in-page would open |
+| `clipped` | `overflow`/`clip`/`clip-path` leaving nothing visible | sr-only labels, `max-height:0` accordions |
+| `offscreen` | parked above/left of the page origin | skip links, `text-indent:-9999px` |
+| `zero-size` | `font-size:0` and friends | |
+| `prep` | parch's own `hide-overlays` step | popup and backdrop chrome — **not page content** |
+
+Rules:
+
+- **It is a separate array on purpose.** A consumer that follows the
+  "ignore unknown fields" rule — an older `parch`, an external indexer —
+  never sees it, and keeps indexing visible text only. Tagging blocks in
+  place would have made every such reader index hidden text as visible.
+- **One id sequence.** Visible blocks are `0..n-1` (an id is its index);
+  hidden blocks continue from `n`. OCR blocks are numbered after both.
+- **Same text rules** as visible blocks: raw text, UTF-16 offsets, the
+  block is the phrase boundary. A hidden subtree is always its own
+  block(s) — it never splits or joins the visible run around it, so the
+  visible blocks of a page are identical with and without hidden text
+  recorded.
+- **Geometry is best-effort.** Where the engine still lays the text out
+  (`visibility`, `opacity`, `clipped`, `offscreen`) words carry real boxes;
+  where it does not (`display`, a closed `<details>`) every box is zero.
+  Never position an overlay from a hidden block's boxes.
+- **Search is opt-in.** `find`, `text`, `lines` and `mark` see visible text
+  only unless given `--hidden` (optionally `--hidden=collapsed,display`).
+  `collapsed` content is hidden like the rest even though a browser's
+  find-in-page would open it: the layer describes what was on screen.
+  `--hidden` never includes `prep`; name it explicitly to audit it.
+- **Revealing happens only in a marked copy.** `parch mark --hidden`
+  un-hides each matched block in the COPY (opens the `<details>`, shows the
+  panel), outlines it, and labels it "hidden on the original page". The
+  archive is never altered, and capture-time `-M` never reveals — it only
+  reports how many matches sit in hidden text. Revealing reflows the copy,
+  an inactive tab appears alongside the active one, and a responsive page
+  that carries both a desktop and a mobile menu yields both hits; narrow
+  with `--hidden=<reasons>` when that is noise.
+- `stats.hiddenBlocks`/`hiddenWords` count the array. `pageSimilarity` and
+  the oracle compare visible text only.
+
+Archives captured before this existed have no `hidden` array, and their
+`blocks` include some text that was never visible (`visibility:hidden`,
+`opacity:0`, closed `<details>`, clip-path) — the old extractor only tested
+for client rects. `parch mark` is unaffected either way: it re-walks the
+loaded archive, so `mark --hidden` works on old archives too. `find
+--hidden` needs the array, so it needs a recapture.
+
+### What an archive could not hold, and now does
+
+Chrome's snapshot serializer drops every element carrying a `hidden`
+attribute — by attribute, even when CSS makes it visible. Capture now
+trades the attribute for `data-parchmint-hidden` just before the snapshot
+(pscription's `preserve-hidden-attr`); the HTML backend restores the real
+attribute in the output, an `.mht` keeps the `data-` form (it renders the
+same). Archives captured earlier simply do not contain that content.
+
+## Text that is not in text nodes
+
+A form control shows text that lives in its *value*, and SVG `<text>` is
+laid out by a different engine. Both are on screen, so both are visible
+blocks, tagged `via`:
+
+```json
+{ "id": 7, "type": "other", "via": "control", "node": "1/12",
+  "box": [8, 400, 240, 22], "text": "search the archive",
+  "words": [[0, 6, 8, 400, 240, 22], [7, 10, 8, 400, 240, 22]] }
+```
+
+`via` is `control` (an `<input>` value or placeholder, a `<textarea>`'s
+text, a `<select>`'s chosen option — never a password) or `svg`. Every word
+carries the **element's** box: there is no per-word geometry. A mark on
+such a block outlines the control, or puts a rect behind the SVG text,
+instead of wrapping words. Generated content (`::before`/`::after`) is
+not recorded; it is not selectable in a browser either.
 
 ## Images and OCR
 

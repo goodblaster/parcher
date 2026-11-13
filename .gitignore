@@ -9,6 +9,16 @@
 *.mht
 *.mhtml
 *.html.bak
+# A bare `parch <url>` writes <host>.html into the working directory — multi-
+# megabyte captures carrying real hostnames. Nothing tracked lives at the root
+# as .html/.pdf/.png, so root-level outputs can never be `git add`-ed by
+# accident. (Test fixtures and examples sit in subdirectories, unaffected.)
+/*.html
+/*.pdf
+/*.png
+/*.jpeg
+/*.jpg
+/*.webp
 
 # Real hosts behind the test-site-N labels — the mapping never ships
 .sites.env
