@@ -10,10 +10,14 @@
 //	filename   = "{host}-{date}.{ext}"
 //
 //	[defaults]
-//	format = "html"
-//	width  = 1600
-//	links  = "keep"
-//	favicon = true
+//	format     = "html"
+//	width      = 1600
+//	height     = 900
+//	dpr        = 1
+//	links      = "keep"
+//	favicon    = true
+//	text       = true
+//	user_agent = ""        # empty = the browser's own Chrome user agent
 package config
 
 import (
@@ -40,14 +44,17 @@ type Config struct {
 
 // Defaults mirrors the parch flags that can be defaulted from config.
 type Defaults struct {
-	Format  string `toml:"format"`
-	Width   int    `toml:"width"`
-	Height  int    `toml:"height"`
-	Paper   string `toml:"paper"`
-	Links   string `toml:"links"`
-	Timeout int    `toml:"timeout"`
-	Profile string `toml:"profile"`
-	Favicon *bool  `toml:"favicon"`
+	Format    string  `toml:"format"`
+	Width     int     `toml:"width"`
+	Height    int     `toml:"height"`
+	DPR       float64 `toml:"dpr"`
+	Paper     string  `toml:"paper"`
+	Links     string  `toml:"links"`
+	Timeout   int     `toml:"timeout"`
+	Profile   string  `toml:"profile"`
+	UserAgent string  `toml:"user_agent"`
+	Favicon   *bool   `toml:"favicon"`
+	Text      *bool   `toml:"text"`
 }
 
 // ConfigDirName is the directory that holds a project-local or global config.
@@ -61,34 +68,36 @@ const configFileName = "config"
 // earlier ones field-by-field: because each file is decoded onto the same
 // struct, a key absent from the local file keeps the global value. A missing
 // file is not an error. It also returns the paths actually loaded, for
-// diagnostics.
-func Load() (Config, []string, error) {
-	var cfg Config
-	var loaded []string
-
+// diagnostics, and a warning for every key no field claims — a typo'd key
+// ("widht = 1280") used to be ignored in silence, leaving the default in
+// force with nothing to say why.
+func Load() (cfg Config, loaded, warnings []string, err error) {
 	for _, path := range configPaths() {
-		if path == "" {
-			continue
-		}
-		if _, err := os.Stat(path); err != nil {
+		if _, statErr := os.Stat(path); statErr != nil {
 			continue // missing file: skip
 		}
-		if _, err := toml.DecodeFile(path, &cfg); err != nil {
-			return cfg, loaded, err
+		meta, decErr := toml.DecodeFile(path, &cfg)
+		if decErr != nil {
+			return cfg, loaded, warnings, decErr
+		}
+		for _, key := range meta.Undecoded() {
+			warnings = append(warnings, path+": unknown key "+key.String())
 		}
 		loaded = append(loaded, path)
 	}
-	return cfg, loaded, nil
+	return cfg, loaded, warnings, nil
 }
 
 // configPaths returns the config files to try, lowest precedence first:
-// the global config, then the nearest project-local config.
+// the global config, then the nearest project-local config. Run from
+// anywhere under the home directory, the upward walk for a local config
+// ARRIVES at the global one — the same file must not be decoded twice.
 func configPaths() []string {
 	var paths []string
 	if home, err := os.UserHomeDir(); err == nil {
 		paths = append(paths, filepath.Join(home, ConfigDirName, configFileName))
 	}
-	if local := findLocalConfig(); local != "" {
+	if local := findLocalConfig(); local != "" && (len(paths) == 0 || local != paths[0]) {
 		paths = append(paths, local)
 	}
 	return paths

@@ -273,6 +273,19 @@ func init() {
 	Register("link-shadow-styles", func() Step {
 		return stepIgnoreError("link-shadow-styles", actions.RunScriptIgnoreError(js.LinkShadowStyles, nil))
 	})
+	// Not part of Staticize: the snapshot backends run it themselves as the
+	// very last thing before serializing (see PreserveHiddenStep).
+	Register("preserve-hidden-attr", PreserveHiddenStep)
 	Register("rewrite-links-new-tab", func() Step { return RewriteLinksStep("new-tab") })
 	Register("rewrite-links-disable", func() Step { return RewriteLinksStep("disable") })
+}
+
+// PreserveHiddenStep keeps elements carrying a `hidden` attribute in a
+// snapshot, which Chrome's MHTML serializer otherwise drops outright (see
+// preserve_hidden_attr.js). It belongs to the SNAPSHOT backends only and
+// runs immediately before they serialize, which is why it is a step a
+// backend calls rather than an entry in Staticize: a backend that
+// photographs the live page has no use for it.
+func PreserveHiddenStep() Step {
+	return stepIgnoreError("preserve-hidden-attr", actions.RunScriptIgnoreError(js.PreserveHiddenAttr, nil))
 }

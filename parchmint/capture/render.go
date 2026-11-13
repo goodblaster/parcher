@@ -74,7 +74,7 @@ type RenderOptions struct {
 
 	// ExtractLayer indexes the loaded page and returns the composed layer in
 	// RenderResult.TextLayer. It is for archives that arrive WITHOUT one — a
-	// page saved by the browser, or captured with --text=false — so that the
+	// page saved by the browser, or captured with --no-text — so that the
 	// converted copy still comes out as a proper archive. When phrases are
 	// given the layer is composed from the pre-mark extraction, keeping the
 	// capture-time rule that the layer describes the page and marks are a
@@ -103,6 +103,12 @@ type RenderResult struct {
 	DOMMatches   int
 	OCRMatches   int
 	ImagesMarked int
+
+	// HiddenMatches counts matches in hidden text that were revealed and
+	// marked (RenderOptions.Match.Hidden); HiddenUnmarked counts the ones
+	// left alone because they were not asked for.
+	HiddenMatches  int
+	HiddenUnmarked int
 
 	// PDF only: invisible selectable text placed over image words.
 	ImagesOverlaid int
@@ -202,11 +208,12 @@ func RenderArchive(ctx context.Context, cfg runner.Config, fileURL string, phras
 			if opts.ExtractLayer {
 				res.TextLayer = composeFreshLayer(payload, opts.SourceURL)
 			}
-			n, err := applyHighlights(ctx, payload, phrases, opts.Match, opts.Colors, opts.Style)
+			counts, err := applyHighlights(ctx, payload, phrases, opts.Match, opts.Colors, opts.Style, true)
 			if err != nil {
 				return err
 			}
-			res.DOMMatches = n
+			res.DOMMatches = counts.Visible
+			res.HiddenMatches, res.HiddenUnmarked = counts.Hidden, counts.HiddenUnmarked
 		} else if opts.ExtractLayer {
 			payload, err := extractPayload(ctx, false)
 			if err != nil {

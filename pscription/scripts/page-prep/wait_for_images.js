@@ -1,6 +1,10 @@
 // Waits until the page's images have finished loading, up to maxWaitMs.
-// Checks <img> elements directly (complete + naturalWidth) and probes CSS
-// background-image URLs via Image() objects (served from cache when loaded).
+// <img> elements are awaited through img.decode() — it settles the moment
+// the image is loaded AND decoded (or has failed), where polling `complete`
+// every 200ms paid up to a full tick per wait for nothing. CSS
+// background-image URLs are probed via Image() objects (served from cache
+// when loaded) by a small worker pool, so one slow URL holds up one worker
+// instead of the nine other probes that used to share its batch.
 // Every probe carries its own timeout so a single stalled image can never
 // hang the whole wait past its budget.
 async function waitForImages(maxWaitMs) {
@@ -9,14 +13,16 @@ async function waitForImages(maxWaitMs) {
     const deadline = () => Math.max(0, maxWaitMs - (Date.now() - start));
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    // 1. DOM images: poll until all are settled (loaded or errored).
+    // 1. DOM images: wait until all are settled (loaded or errored).
     const imgs = Array.from(document.images).filter(
         (img) => img.src || img.srcset);
     const settled = (img) => img.complete; // complete is true on error too
     let pending = imgs.filter((img) => !settled(img));
 
-    while (pending.length > 0 && deadline() > 0) {
-        await sleep(Math.min(200, deadline()));
+    if (pending.length > 0 && deadline() > 0) {
+        // decode() rejects on a broken image, which is still "settled".
+        const decoded = Promise.allSettled(pending.map((img) => img.decode()));
+        await Promise.race([decoded, sleep(deadline())]);
         pending = pending.filter((img) => !settled(img));
     }
 
@@ -47,10 +53,13 @@ async function waitForImages(maxWaitMs) {
 
     let bgLoaded = 0;
     const urls = Array.from(bgUrls);
-    for (let i = 0; i < urls.length && deadline() > 0; i += 10) {
-        const results = await Promise.all(urls.slice(i, i + 10).map(probe));
-        bgLoaded += results.filter(Boolean).length;
-    }
+    let next = 0;
+    const worker = async () => {
+        while (next < urls.length && deadline() > 0) {
+            if (await probe(urls[next++])) bgLoaded++;
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(10, urls.length) }, worker));
 
     return {
         total: imgs.length,

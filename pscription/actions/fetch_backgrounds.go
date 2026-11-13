@@ -9,7 +9,8 @@ import (
 	"strings"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/logos"
+	"github.com/goodblaster/parcher/pscription/agents"
+	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
@@ -24,47 +25,84 @@ func FetchAndInjectBackgrounds() chromedp.ActionFunc {
 		}
 
 		if len(urls) == 0 {
-			logos.Info("no background images to fetch")
+			log.Info("no background images to fetch")
 			return nil
 		}
 
-		logos.With("count", len(urls)).Info("fetching background images")
+		log.With("count", len(urls)).Info("fetching background images")
 
 		// Step 2: Fetch all images (parallel, deduplicated) as data URLs
 		urlToDataURL, fetched, failed := fetchAllAsDataURLs(ctx, urls, "background image")
 
-		logos.With("fetched", fetched).With("failed", failed).Info("fetched background images")
+		log.With("fetched", fetched).With("failed", failed).Info("fetched background images")
 
 		if len(urlToDataURL) == 0 {
 			return nil
 		}
 
 		// Step 3: Inject the fetched images back into the page
-		var result map[string]interface{}
+		var result injectStats
 		err = chromedp.Run(ctx, js.InjectBackgroundImages.Action(&result, urlToDataURL))
 		if err != nil {
 			return fmt.Errorf("failed to inject background images: %w", err)
 		}
-
-		injected := int(result["injected"].(float64))
-		processed := int(result["processed"].(float64))
-		logos.With("injected", injected).With("processed", processed).Info("injected background images")
+		log.With("injected", result.Injected).With("processed", result.Processed).Info("injected background images")
 
 		return nil
 	}
 }
 
+// injectStats is what the inject_*.js scripts return. Decoded into a struct
+// rather than type-asserted out of a map: an unexpected result shape used to
+// panic the whole capture on `result["injected"].(float64)`.
+type injectStats struct {
+	Injected  int `json:"injected"`
+	Processed int `json:"processed"`
+}
+
+// maxResourceBytes bounds one server-side image or font fetch. A resource
+// becomes a base64 data: URI held in memory and shipped into the page over
+// CDP, so an endless or mislabelled response (a video behind an <img>, a
+// stream) must not be read to the end.
+const maxResourceBytes = 64 << 20
+
+// readCapped reads r to EOF, failing rather than truncating past limit — a
+// truncated image embeds as a corrupt one.
+func readCapped(r io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("larger than the %d MB resource cap", limit>>20)
+	}
+	return data, nil
+}
+
+// fetchUserAgent is what the server-side fetchers announce: the session
+// browser's own user agent, so a resource request looks like it came from
+// the browser that loaded the page (a CDN that serves by user agent then
+// answers both the same way). Falls back to a static Chrome string when the
+// page cannot be asked. Call it ONCE per batch, never per request — it is a
+// round trip to the browser.
+func fetchUserAgent(ctx context.Context) string {
+	if ua, err := browserUserAgent(ctx); err == nil && ua != "" {
+		return ua
+	}
+	return agents.Current
+}
+
 // fetchAsDataURL fetches a URL and converts it to a data URL. The request
 // carries ctx so a hung server dies with the capture deadline, not after
 // the full client timeout.
-func fetchAsDataURL(ctx context.Context, client *http.Client, url string) (string, error) {
+func fetchAsDataURL(ctx context.Context, client *http.Client, url, userAgent string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return "", err
 	}
 
 	// Set headers to mimic a browser
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "image/webp,image/apng,image/*,*/*;q=0.8")
 	// Note: do NOT set Accept-Encoding manually — that disables Go's transparent
 	// gzip decompression and gzip-served bodies (commonly SVGs) would be
@@ -80,8 +118,7 @@ func fetchAsDataURL(ctx context.Context, client *http.Client, url string) (strin
 		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	// Read the image data
-	data, err := io.ReadAll(resp.Body)
+	data, err := readCapped(resp.Body, maxResourceBytes)
 	if err != nil {
 		return "", err
 	}

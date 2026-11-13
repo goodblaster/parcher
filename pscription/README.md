@@ -30,7 +30,7 @@ go build -o bin/ ./cmd/...
 ./bin/pscribe https://blog.site @links --only links | jq -r '.[].url' | xargs -n1 parch
 
 # a .rx pscription file (or make it executable with a #!/usr/bin/env pscribe line)
-./bin/pscribe -r login-and-extract.rx https://portal.site
+./bin/pscribe --recipe login-and-extract.rx https://portal.site
 ./login-and-extract.rx https://portal.site
 
 # log in by hand in a visible browser, then extract
@@ -41,6 +41,11 @@ go build -o bin/ ./cmd/...
 `@name[:out]` a built-in script (`@article`, `@links`) · `path.js[:out]`
 your own script · `wait:user` / `wait:2s`. The `:out` suffix captures a
 script's return value into the report's `outputs`.
+
+**Options** are named as `parch` names them: `--recipe`, `--profile`,
+`--show`, `--timeout`, `--width`, `--height`, `--dpr`, `--user-agent`, `-v`.
+The browser announces its own (Chrome) user agent unless `--user-agent`
+says otherwise.
 
 **Prep** (`--prep`): `none`, `minimal` (default — dialogs cleared, content
 loaded), or `staticize` (full self-contained preparation).

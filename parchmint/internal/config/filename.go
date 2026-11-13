@@ -6,13 +6,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Filename template tokens (used in the "filename" config key):
 //
 //	{host}      request host, without a leading "www."   test-site-1
 //	{path}      request path, slashes flattened          support_contact
-//	{title}     page <title>, sanitized                  Apple
+//	{title}     page <title>, sanitized                  Quarterly-Report
 //	{ext}       output extension, without the dot         html
 //	{date}      local date                               2026-07-18
 //	{time}      local time                               15-04-05
@@ -87,22 +89,43 @@ func hostAndPath(raw string) (host, path string) {
 	return sanitize(host), path
 }
 
-// sanitize turns an arbitrary string into a safe filename component: anything
-// that isn't a letter, digit, dot, dash, or underscore becomes a dash, with
-// runs of dashes collapsed and leading/trailing dashes trimmed.
+// maxComponent caps one derived filename component, in bytes. Filesystems
+// limit a NAME to 255 bytes; a template usually joins several components and
+// an extension, so each gets a share. Without a cap a long title or query
+// string failed the write — after the whole capture had already been paid for.
+const maxComponent = 150
+
+// sanitize turns an arbitrary string into a safe filename component: letters
+// and digits of ANY script are kept, along with dot, dash and underscore;
+// everything else becomes a dash, with runs of dashes collapsed and leading
+// or trailing dashes and dots trimmed (a leading dot would make the file
+// hidden). The result is capped at maxComponent bytes.
+//
+// It used to keep ASCII only, so a title in Chinese, Russian or Greek
+// sanitized to nothing and every such page was named "untitled".
 func sanitize(s string) string {
 	var b strings.Builder
 	for _, r := range s {
 		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
-			r == '.', r == '-', r == '_':
+		case unicode.IsLetter(r), unicode.IsDigit(r), r == '.', r == '-', r == '_':
 			b.WriteRune(r)
 		default:
 			b.WriteRune('-')
 		}
 	}
 	collapsed := multiDash.ReplaceAllString(b.String(), "-")
-	return strings.Trim(collapsed, "-")
+	return strings.Trim(Truncate(strings.Trim(collapsed, "-."), maxComponent), "-.")
+}
+
+// Truncate cuts s to at most max bytes without splitting a UTF-8 sequence.
+func Truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	for max > 0 && !utf8.RuneStart(s[max]) {
+		max--
+	}
+	return s[:max]
 }
 
 var multiDash = regexp.MustCompile(`-+`)

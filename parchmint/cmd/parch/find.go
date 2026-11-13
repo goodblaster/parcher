@@ -15,22 +15,28 @@ import (
 // search over embedded text layers, shaped like grep — multiple files,
 // filename prefixes, -l/-c/-q/-m/-r, and grep exit codes: 0 with matches,
 // 1 without, 2 on error (with several files: 0 if ANY file matched).
+//
+// Where it departs from grep, it is to keep one meaning per letter across
+// every parch command: -v is --verbose and -h is --help everywhere, so
+// invert and no-filename are long-only here.
 func runFindCommand(args []string) {
 	fs := flag.NewFlagSet("find", flag.ExitOnError)
 	asJSON := fs.Bool("json", false, "hits as JSON: one indented document for one file, NDJSON (an object per hit) for several")
 	context := fs.Int("context", 40, "context characters shown on each side of a match")
 	var invert, listFiles, countOnly, quiet, withFile, noFile, nullSep bool
-	fs.BoolVarP(&invert, "invert", "v", false, "select blocks with NO match instead of hits")
+	fs.BoolVar(&invert, "invert", false, "select blocks with NO match instead of hits")
 	fs.BoolVarP(&listFiles, "files-with-matches", "l", false, "print only the names of files with matches")
 	fs.BoolVarP(&countOnly, "count", "c", false, "print only a match count per file")
 	fs.BoolVarP(&quiet, "quiet", "q", false, "print nothing; exit status only")
 	maxCount := fs.IntP("max-count", "m", 0, "stop after this many matches per file (0 = unlimited)")
-	recurseDir := fs.StringP("recursive", "r", "", "also search every archive under this directory (.html, .htm, .mht, .mhtml, .pdf)")
+	recursive := fs.BoolP("recursive", "r", false, "search every archive under any DIRECTORY given in place of a file (.html, .htm, .mht, .mhtml, .pdf)")
 	fs.BoolVarP(&withFile, "with-filename", "H", false, "always prefix output with the file name")
-	fs.BoolVarP(&noFile, "no-filename", "h", false, "never prefix output with the file name (use -help for usage)")
+	fs.BoolVar(&noFile, "no-filename", false, "never prefix output with the file name")
 	fs.BoolVarP(&nullSep, "null", "0", false, "with -l: NUL-separated names, for xargs -0")
 	colorMode := fs.String("color", "auto", "colorize matches in human output: auto (only on a terminal), always, never")
 	match := registerMatchFlags(fs)
+	hidden := registerHidden(fs, "also search text the page hides (collapsed sections, inactive tabs, screen-reader text); such hits are tagged with the reason.")
+	hiddenOnly := fs.Bool("hidden-only", false, "search ONLY hidden text — an audit of what the page carries without showing")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s find [options] <query> <archive...>\n\n", os.Args[0])
 		fmt.Fprintln(os.Stderr, "Ctrl-F-style matching within one paragraph (never across): a query")
@@ -42,8 +48,12 @@ func runFindCommand(args []string) {
 		fmt.Fprintln(os.Stderr, "against the raw block text (no case/accent/punctuation folding;")
 		fmt.Fprintln(os.Stderr, "-i for case-insensitive). `.` does not match a block's internal")
 		fmt.Fprintln(os.Stderr, "newlines (from <br>) unless the pattern uses (?s).")
+		fmt.Fprintln(os.Stderr, "\nOnly text the page SHOWS is searched by default. --hidden adds what")
+		fmt.Fprintln(os.Stderr, "it hides — a collapsed FAQ answer, an inactive tab — and tags each such")
+		fmt.Fprintln(os.Stderr, "hit with why it was hidden: [hidden:collapsed], [hidden:display], …")
+		fmt.Fprintln(os.Stderr, "(`parch mark --hidden` then reveals and marks them.)")
 		fmt.Fprintln(os.Stderr, "\nWith several files (or -r), output lines carry a file: prefix")
-		fmt.Fprintln(os.Stderr, "(-H forces it, -h suppresses it) and exit status is 0 when any")
+		fmt.Fprintln(os.Stderr, "(-H forces it, --no-filename suppresses it) and exit status is 0 when any")
 		fmt.Fprintln(os.Stderr, "file matched. `-` as an archive reads bytes from stdin; `--` ends")
 		fmt.Fprintln(os.Stderr, "options, so queries starting with a dash are searchable. Corpus idiom:")
 		fmt.Fprintf(os.Stderr, "  %s find -l -0 'phrase' *.html | xargs -0 -n1 %s mark 'phrase'\n", os.Args[0], os.Args[0])
@@ -51,15 +61,14 @@ func runFindCommand(args []string) {
 		fs.PrintDefaults()
 	}
 	_ = fs.Parse(args)
-	if fs.NArg() < 2 && !(fs.NArg() == 1 && *recurseDir != "") {
+	if fs.NArg() < 2 {
 		fs.Usage()
 		os.Exit(2)
 	}
 
-	die := func(err error) {
-		fmt.Fprintln(os.Stderr, "parch: "+err.Error())
-		os.Exit(2)
-	}
+	// find keeps grep's convention: 2 means trouble of any kind, because 1
+	// already means "no match".
+	die := usageErr
 
 	// ANSI SGR, grep's palette: bold red match, magenta file names.
 	// Plain when piped (auto), so downstream tools never see escapes.
@@ -71,7 +80,7 @@ func runFindCommand(args []string) {
 		useColor = stdoutIsTerminal()
 	case "never":
 	default:
-		die(fmt.Errorf("unknown -color mode %q (want auto, always, or never)", *colorMode))
+		die(fmt.Errorf("unknown --color mode %q (want auto, always, or never)", *colorMode))
 	}
 	openMark, closeMark := "«", "»"
 	if useColor {
@@ -79,9 +88,21 @@ func runFindCommand(args []string) {
 	}
 
 	query := fs.Arg(0)
-	files := fs.Args()[1:]
-	if *recurseDir != "" {
-		err := filepath.Walk(*recurseDir, func(p string, info os.FileInfo, err error) error {
+	// Directories are searched with -r, as in grep; without it a directory
+	// is an error rather than something silently skipped.
+	var files []string
+	sawDir := false
+	for _, arg := range fs.Args()[1:] {
+		info, statErr := os.Stat(arg)
+		if arg == stdinName || statErr != nil || !info.IsDir() {
+			files = append(files, arg)
+			continue
+		}
+		if !*recursive {
+			die(fmt.Errorf("%s is a directory; use -r to search the archives under it", arg))
+		}
+		sawDir = true
+		err := filepath.Walk(arg, func(p string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
@@ -99,14 +120,17 @@ func runFindCommand(args []string) {
 		}
 	}
 
-	matcher, err := textlayer.Compile(query, match.options())
+	matchOpts := match.options()
+	matchOpts.Hidden = hiddenReasons(*hidden)
+	matchOpts.HiddenOnly = *hiddenOnly
+	matcher, err := textlayer.Compile(query, matchOpts)
 	if err != nil {
 		die(err)
 	}
 
 	// grep-shaped naming: prefix with the file name when searching more
 	// than one file, or always with -H, never with -h.
-	multi := len(files) > 1 || *recurseDir != ""
+	multi := len(files) > 1 || sawDir
 	showName := (withFile || multi) && !noFile
 	prefixFor := func(name string) string {
 		if !showName {
@@ -186,11 +210,11 @@ func runFindCommand(args []string) {
 		default:
 			for _, h := range hits {
 				box := h.Box()
-				fmt.Printf("%s#%d %s @%d,%d  %s\n", prefixFor(path), h.Block.ID, h.Block.Type,
+				fmt.Printf("%s#%d %s%s @%d,%d  %s\n", prefixFor(path), h.Block.ID, h.Block.Type, hiddenTag(h.Block),
 					box[0], box[1], h.Context(*context, openMark, closeMark))
 			}
 			for _, b := range blocks {
-				fmt.Printf("%s#%d %s  %s\n", prefixFor(path), b.ID, b.Type, snippet(b.Text, *context*2))
+				fmt.Printf("%s#%d %s%s  %s\n", prefixFor(path), b.ID, b.Type, hiddenTag(b), snippet(b.Text, *context*2))
 			}
 		}
 	}
@@ -219,15 +243,28 @@ func runFindCommand(args []string) {
 
 // findHits collects a matcher's hits across a layer, stopping at max
 // (0 = unlimited) so -m doesn't pay for matches it will not print.
+//
+// Visible blocks first, then hidden ones; the matcher itself decides whether
+// a hidden block may match (MatchOptions.Hidden), so nothing here filters.
 func findHits(m textlayer.Matcher, layer *textlayer.Layer, max int) []textlayer.Hit {
 	var hits []textlayer.Hit
-	for i := range layer.Blocks {
-		hits = append(hits, m.FindBlock(&layer.Blocks[i])...)
-		if max > 0 && len(hits) >= max {
-			return hits[:max]
+	for _, group := range [][]textlayer.Block{layer.Blocks, layer.Hidden} {
+		for i := range group {
+			hits = append(hits, m.FindBlock(&group[i])...)
+			if max > 0 && len(hits) >= max {
+				return hits[:max]
+			}
 		}
 	}
 	return hits
+}
+
+// hiddenTag renders " [hidden:why]" for a hidden block, nothing otherwise.
+func hiddenTag(b *textlayer.Block) string {
+	if b.Why == "" {
+		return ""
+	}
+	return " [hidden:" + b.Why + "]"
 }
 
 // unmatchedBlocks is the -v selection: blocks with no match, capped at
@@ -246,6 +283,10 @@ func unmatchedBlocks(m textlayer.Matcher, layer *textlayer.Layer, max int) []*te
 	return out
 }
 
+// Note: --invert lists VISIBLE blocks without a match. Hidden blocks are a
+// different population; listing "hidden blocks that did not match" alongside
+// them would answer a question nobody asked.
+
 // emitNDJSON writes one JSON object per selected hit/block, each line
 // standalone (archive identity included) for streaming multi-file output.
 func emitNDJSON(enc *json.Encoder, path string, layer *textlayer.Layer, hits []textlayer.Hit, blocks []*textlayer.Block, context int) error {
@@ -259,7 +300,8 @@ func emitNDJSON(enc *json.Encoder, path string, layer *textlayer.Layer, hits []t
 			Match   string        `json:"match"`
 			Context string        `json:"context"`
 			Box     textlayer.Box `json:"box"`
-		}{path, layer.URL, h.Block.ID, h.Block.Type, [2]int{h.Start, h.End}, h.Text(), h.Context(context, "«", "»"), h.Box()}
+			Hidden  string        `json:"hidden,omitempty"`
+		}{path, layer.URL, h.Block.ID, h.Block.Type, [2]int{h.Start, h.End}, h.Text(), h.Context(context, "«", "»"), h.Box(), h.Block.Why}
 		if err := enc.Encode(line); err != nil {
 			return err
 		}
@@ -323,6 +365,9 @@ func emitJSONDocument(query, path string, layer *textlayer.Layer, hits []textlay
 		Text  string           `json:"context"`
 		Box   textlayer.Box    `json:"box"`
 		Words []map[string]any `json:"words"`
+		// Hidden is the reason the text was not visible; absent for text
+		// the page showed.
+		Hidden string `json:"hidden,omitempty"`
 	}
 	out := struct {
 		Query      string    `json:"query"`
@@ -339,12 +384,13 @@ func emitJSONDocument(query, path string, layer *textlayer.Layer, hits []textlay
 	}
 	for _, h := range hits {
 		jh := jsonHit{
-			Block: h.Block.ID,
-			Type:  h.Block.Type,
-			Range: [2]int{h.Start, h.End},
-			Match: h.Text(),
-			Text:  h.Context(context, "«", "»"),
-			Box:   h.Box(),
+			Block:  h.Block.ID,
+			Type:   h.Block.Type,
+			Range:  [2]int{h.Start, h.End},
+			Match:  h.Text(),
+			Text:   h.Context(context, "«", "»"),
+			Box:    h.Box(),
+			Hidden: h.Block.Why,
 		}
 		for _, w := range h.Words() {
 			jh.Words = append(jh.Words, map[string]any{

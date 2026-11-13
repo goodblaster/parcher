@@ -27,7 +27,11 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/.." && pwd)
 # Real hosts for the reference sites live in a gitignored .sites.env
 # (SITE-MAP.md explains why); without it this falls back to example.com.
-[ -f "$root/.sites.env" ] && . "$root/.sites.env"
+# .sites.env lives at the REPOSITORY root (one level above this component);
+# the component-level path is where it sat before the two repositories merged.
+for env in "$root/../.sites.env" "$root/.sites.env"; do
+  if [ -f "$env" ]; then . "$env"; break; fi
+done
 
 PARCH=${PARCH:-./bin/parch}
 OUTDIR=${OUTDIR:-./check-out}
@@ -67,7 +71,7 @@ shoot() {
 }
 
 status=0
-printf '%-46s %10s %9s %8s  %s\n' URL BYTES EXT-REFS SCRIPTS RESULT
+printf '%-46s %10s %9s %9s %6s %8s  %s\n' URL BYTES EXT-REFS REL-REFS FONT SCRIPTS RESULT
 
 for url in "${urls[@]}"; do
   slug=$(printf '%s' "$url" | sed -e 's|https\{0,1\}://||' -e 's|[^A-Za-z0-9._-]|_|g' | cut -c1-60)
@@ -75,7 +79,7 @@ for url in "${urls[@]}"; do
 
   "$PARCH" -f html -o "$archive" "$url" >"$OUTDIR/$slug.log" 2>&1
   if [ ! -s "$archive" ]; then
-    printf '%-46s %10s %9s %8s  %s\n' "$slug" FAILED - - "see $OUTDIR/$slug.log"
+    printf '%-46s %10s %9s %9s %6s %8s  %s\n' "$slug" FAILED - - - - "see $OUTDIR/$slug.log"
     status=1
     continue
   fi
@@ -85,7 +89,35 @@ for url in "${urls[@]}"; do
   bytes=$(stat -f%z "$archive")
   # A reference still pointing at the network is a resource the archive does
   # not carry. Scripts should be the embedded text layer and ld+json only.
-  refs=$(grep -o 'src="http\|url(http' "$archive" | wc -l | tr -d ' ')
+  #
+  # Two counts, because they mean different things:
+  #
+  #   EXT-REFS  targets that still name the network (http:, https:, //host).
+  #             Quoted forms included — `url("http…` was invisible to the old
+  #             `url(http` grep.
+  #   REL-REFS  relative targets nothing inlined (`url("/bg.png")`). Opened
+  #             from disk these resolve to nothing. Most are the page's
+  #             ORIGINAL @font-face sources, superseded by the embedded data:
+  #             copies fetch-fonts injects — harmless, and reported apart as
+  #             FONT (absolute or relative) so the remainder is what to look
+  #             at.
+  #
+  # What remains in either column is usually a stylesheet rule that never
+  # MATCHED anything on the page (a sprite for a state the page was not in, a
+  # per-item background for items not shown): the browser never loaded it, so
+  # no snapshot could carry it. As ever it is the trend that diagnoses — the
+  # same page going from 20 to 200 has lost something.
+  read -r refs rel font <<EOF2
+$(perl -ne '
+    while (/(?:\b(?:src|srcset|poster)=|url\()\s*(?:&quot;|["\x27])?\s*([^"\x27)\s>&]+)/g) {
+      my $t = $1;
+      next if $t =~ /^(?:data:|cid:|about:|blob:|javascript:|#|%23)/i;
+      if ($t =~ /\.(?:woff2?|ttf|otf|eot)(?:[?#]|$)/i || $t =~ /\.svg#/i) { $font++ }
+      elsif ($t =~ m{^(?:https?:)?//}i) { $ext++ }
+      else { $rel++ }
+    }
+    END { printf "%d %d %d\n", $ext + 0, $rel + 0, $font + 0 }' "$archive")
+EOF2
   scripts=$(grep -o '<script' "$archive" | wc -l | tr -d ' ')
 
   # A handful of surviving references is normal and not a failure: tracking
@@ -95,9 +127,10 @@ for url in "${urls[@]}"; do
   # so this stays usable as a gate without crying wolf.
   result=ok
   if [ "$refs" -ne 0 ]; then result="$refs external ref(s) — check they are junk"; fi
+  if [ "$rel" -ne 0 ]; then result="$result; $rel relative ref(s) unresolved"; fi
   if [ ! -s "$archive.png" ]; then result="$result (no screenshot)"; fi
 
-  printf '%-46s %10s %9s %8s  %s\n' "$slug" "$bytes" "$refs" "$scripts" "$result"
+  printf '%-46s %10s %9s %9s %6s %8s  %s\n' "$slug" "$bytes" "$refs" "$rel" "$font" "$scripts" "$result"
 done
 
 echo

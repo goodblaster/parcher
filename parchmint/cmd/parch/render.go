@@ -57,8 +57,9 @@ func runMarkOrRender(args []string, marking bool) {
 	fs := flag.NewFlagSet(verb, flag.ExitOnError)
 
 	output := fs.StringP("output", "o", "", "output file ('-' for stdout)")
-	format := fs.StringP("format", "f", "", "output format: html, mht, pdf, png, jpeg, webp")
+	format := fs.StringP("format", "f", "", "output format: "+formatList())
 	timeout := fs.Int("timeout", 120, "timeout in seconds")
+	size := registerSizeFlags(fs, true)
 
 	// Conversion between the two document containers can also be done by
 	// rewriting the archive's bytes, with no browser at all.
@@ -67,37 +68,40 @@ func runMarkOrRender(args []string, marking bool) {
 		noBrowser = fs.Bool("no-browser", false, "convert html<->mht by rewriting the archive instead of re-rendering it: no Chrome, no reflow (html and mht only)")
 		fetchRemote = fs.Bool("fetch", false, "with --no-browser, download the http(s) resources the page still points at; without it they stay live references")
 	}
-	width := fs.Int("width", 0, "re-render at this layout width in px, reflowing the archive (0 = the width it was captured at)")
-	height := fs.Int("height", 0, "re-render at this viewport height in px (0 = the height it was captured at)")
-	dpr := fs.Float64("dpr", 0, "device pixel ratio: output pixels per CSS pixel, e.g. 0.4 to shrink the output without reflowing (0 = 1)")
-	paper := fs.String("paper", "", "pdf sheet size, independent of -width: auto (default), letter, legal, tabloid, a3, a4, a5, inches (10.5), or WxH (8.5x11)")
 
-	// Marking-only flags: presentation and matching.
-	var termColors stringsFlag
+	// Marking-only flags: presentation, matching, and hidden text.
 	var grayscale *bool
-	var style *string
+	var look *markLook
 	var match *matchFlags
+	var hidden *string
 	if marking {
 		grayscale = fs.Bool("grayscale", false, "mute images containing hits so the highlight pops")
-		fs.VarP(&termColors, "color", "c", "highlight color, repeatable: the Nth -c colors the Nth phrase; unpaired phrases keep the default yellow")
-		style = fs.String("style", "", "highlight style: bg (default), underline, box, or bold")
+		look = registerMarkLook(fs, true)
 		match = registerMatchFlags(fs)
+		hidden = registerHidden(fs, "also mark matches in text the page hides (collapsed sections, inactive tabs, screen-reader text), REVEALING it in the copy with an outline and a label.")
 	}
 
 	fs.Usage = func() {
 		if marking {
 			fmt.Fprintf(os.Stderr, "Usage: %s mark [-f fmt] [--width N] [-o out] <phrase> [phrase ...] <archive.html|.mht>\n\n", os.Args[0])
 			fmt.Fprintln(os.Stderr, "Marks an archive and renders it into any format. Every argument before")
-			fmt.Fprintln(os.Stderr, "the archive is a phrase; all are highlighted (overlaps merge; with -c")
-			fmt.Fprintln(os.Stderr, "colors, the last phrase wins). Same matching as `parch find`, including")
-			fmt.Fprintln(os.Stderr, "its mode flags (-e regex, …).")
+			fmt.Fprintln(os.Stderr, "the archive is a phrase; all are highlighted (overlaps merge; with")
+			fmt.Fprintln(os.Stderr, "--mark-color, the last phrase wins). Same matching as `parch find`,")
+			fmt.Fprintln(os.Stderr, "including its mode flags (-e regex, …).")
+			fmt.Fprintln(os.Stderr, "\nOnly text the page SHOWS is marked by default. A page also carries text")
+			fmt.Fprintln(os.Stderr, "it hides — a collapsed FAQ answer, the tabs not selected — and the run")
+			fmt.Fprintln(os.Stderr, "reports how many more matches sit there. --hidden marks those too and")
+			fmt.Fprintln(os.Stderr, "reveals them in the copy (never in the archive), each outlined and")
+			fmt.Fprintln(os.Stderr, "labelled \"hidden on the original page\". Revealing reflows the page.")
 			fmt.Fprintln(os.Stderr, "\nText inside IMAGES is only marked if you ran `parch ocr` on the archive")
 			fmt.Fprintln(os.Stderr, "first; page text is marked either way.")
 			fmt.Fprintln(os.Stderr, "\nDefault output keeps the archive's own format. -f pdf/png/jpeg/webp")
 			fmt.Fprintln(os.Stderr, "renders the marked page instead, so image and text marks both come out")
 			fmt.Fprintln(os.Stderr, "in the result.")
-			fmt.Fprintln(os.Stderr, "\nExample: parch mark -c yellow -c cyan revenue profit report.html")
+			fmt.Fprintln(os.Stderr, "\nExample: parch mark --mark-color yellow --mark-color cyan revenue profit report.html")
 			fmt.Fprintln(os.Stderr, "         parch mark -f png --dpr 0.4 phone test-site-1.html")
+			fmt.Fprintln(os.Stderr, "         parch mark --hidden \"return policy\" faq.html")
+			fmt.Fprintln(os.Stderr, "         parch mark --hidden=collapsed,display warranty product.html")
 		} else {
 			fmt.Fprintf(os.Stderr, "Usage: %s render -f fmt [--width N] [-o out] <archive.html|.mht>\n\n", os.Args[0])
 			fmt.Fprintln(os.Stderr, "Converts an archive into another format, with no marking — the same")
@@ -117,7 +121,7 @@ func runMarkOrRender(args []string, marking bool) {
 			fmt.Fprintln(os.Stderr, "         parch render -f mht --no-browser --fetch saved-page.html")
 		}
 		fmt.Fprintln(os.Stderr, "\n'-' as the archive reads it from stdin (output then defaults to stdout).")
-		fmt.Fprintln(os.Stderr, "\n-width RE-LAYS OUT the page at that width (a different responsive")
+		fmt.Fprintln(os.Stderr, "\n--width RE-LAYS OUT the page at that width (a different responsive")
 		fmt.Fprintln(os.Stderr, "breakpoint, which can change how much matches); to keep the captured")
 		fmt.Fprintln(os.Stderr, "layout and just resize the output, use --dpr.")
 		fmt.Fprintln(os.Stderr, "\nOptions:")
@@ -126,16 +130,23 @@ func runMarkOrRender(args []string, marking bool) {
 
 	_ = fs.Parse(args)
 
-	die := func(err error) {
-		fmt.Fprintln(os.Stderr, "parch: "+err.Error())
-		os.Exit(2)
-	}
+	// Two ways to stop: `die` for an invocation that is wrong (exit 2), and
+	// `fail` for an operation that did not work (exit 1) — a missing archive
+	// is the second, and used to be reported as the first.
+	die := usageErr
 
 	if marking {
-		if err := validStyle(*style); err != nil {
+		if err := validStyle(look.style); err != nil {
 			die(err)
 		}
 	}
+	if err := size.validate(); err != nil {
+		die(err)
+	}
+	if err := validTimeout(*timeout); err != nil {
+		die(err)
+	}
+	width, height, dpr, paper := &size.width, &size.height, &size.dpr, &size.paper
 	backend, ext, err := resolveFormat(*format, marking)
 	if err != nil {
 		die(err)
@@ -164,6 +175,7 @@ func runMarkOrRender(args []string, marking bool) {
 	matchOpts := textlayer.MatchOptions{}
 	if marking {
 		matchOpts = match.options()
+		matchOpts.Hidden = hiddenReasons(*hidden)
 		// Fail fast on a bad query (a typo'd -e regex, a contradictory flag
 		// combo) BEFORE paying for a browser session.
 		for _, p := range phrases {
@@ -175,11 +187,11 @@ func runMarkOrRender(args []string, marking bool) {
 
 	srcData, srcName, err := readArchive(path)
 	if err != nil {
-		die(err)
+		fail(err)
 	}
 	// A missing layer is not a reason to refuse the work. Plenty of HTML is
 	// not a parch archive — a page saved by the browser, or one captured
-	// with --text=false — and it converts perfectly well. Index it during
+	// with --no-text — and it converts perfectly well. Index it during
 	// the render instead, so what comes out IS a proper archive.
 	layer, err := textlayer.FromBytes(srcData, srcName)
 	reindex := err != nil
@@ -239,7 +251,7 @@ func runMarkOrRender(args []string, marking bool) {
 			warn:      convertWarner(false),
 		})
 		if err != nil {
-			die(err)
+			fail(err)
 		}
 	} else {
 		// The browser loads the archive over file://; a stdin archive is
@@ -247,11 +259,11 @@ func runMarkOrRender(args []string, marking bool) {
 		var abs, tmp string
 		if path == stdinName {
 			if tmp, err = spillArchive(srcData); err != nil {
-				die(err)
+				fail(err)
 			}
 			abs = tmp
 		} else if abs, err = filepath.Abs(path); err != nil {
-			die(err)
+			fail(err)
 		}
 
 		if reindex {
@@ -273,21 +285,31 @@ func runMarkOrRender(args []string, marking bool) {
 			opts.Grayscale = *grayscale
 			opts.Color = "rgba(255, 220, 0, 0.5)" // default image fill; -c overrides per phrase
 			opts.Stroke = "rgba(200, 160, 0, 0.9)"
-			opts.Colors = termColors
-			opts.Style = *style
+			opts.Colors = look.colors
+			opts.Style = look.style
 		}
 
-		res, err = capture.RenderArchive(ctx, runner.DefaultConfig(), "file://"+abs, phrases, layer, opts)
+		res, err = capture.RenderArchive(ctx, runner.DefaultConfig(), fileURL(abs), phrases, layer, opts)
 		if tmp != "" {
 			os.Remove(tmp) // session is over; the spilled stdin copy is done
 		}
 		if err != nil {
-			die(err)
+			fail(err)
 		}
 	}
 
-	if marking && res.DOMMatches+res.OCRMatches == 0 {
+	// What the page hides is never marked unasked — a highlight inside a
+	// collapsed section is one nobody can see — but it is never passed over
+	// in silence either.
+	hiddenNote := ""
+	if marking && res.HiddenUnmarked > 0 {
+		hiddenNote = fmt.Sprintf("%d more match(es) in hidden text — rerun with --hidden to reveal and mark them", res.HiddenUnmarked)
+	}
+	if marking && res.DOMMatches+res.HiddenMatches+res.OCRMatches == 0 {
 		fmt.Fprintln(os.Stderr, "0 matches; nothing written")
+		if hiddenNote != "" {
+			fmt.Fprintln(os.Stderr, hiddenNote)
+		}
 		os.Exit(1)
 	}
 
@@ -298,7 +320,7 @@ func runMarkOrRender(args []string, marking bool) {
 	out := res.Bytes
 	if backend == nil && isMHT && *format == "" {
 		if out, err = textlayer.ReplaceMHTDocument(srcData, res.Bytes); err != nil {
-			die(err)
+			fail(err)
 		}
 		ext = ".marked.mht"
 		if !marking {
@@ -359,15 +381,20 @@ func runMarkOrRender(args []string, marking bool) {
 	switch dest {
 	case "-":
 		if _, err := os.Stdout.Write(out); err != nil {
-			die(err)
+			fail(err)
 		}
 		dest = "(stdout)"
 	case "":
-		dest = strings.TrimSuffix(path, filepath.Ext(path)) + ext
+		// `render -f html page.html` derives page.html — the source itself,
+		// which was silently replaced. Step aside the way mark's .marked does.
+		stem := strings.TrimSuffix(path, filepath.Ext(path))
+		if dest = stem + ext; dest == path {
+			dest = stem + ".rendered" + ext
+		}
 		fallthrough
 	default:
 		if err := os.WriteFile(dest, out, 0o644); err != nil {
-			die(err)
+			fail(err)
 		}
 	}
 
@@ -375,9 +402,15 @@ func runMarkOrRender(args []string, marking bool) {
 	if marking {
 		report = fmt.Sprintf("%s: %d text match(es), %d image match(es), %d image(s) marked",
 			dest, res.DOMMatches, res.OCRMatches, res.ImagesMarked)
+		if res.HiddenMatches > 0 {
+			report += fmt.Sprintf("; %d match(es) in hidden text revealed and marked", res.HiddenMatches)
+		}
 	}
 	if res.OverlayWords > 0 {
 		report += fmt.Sprintf("; %d image(s) overlaid (%d words)", res.ImagesOverlaid, res.OverlayWords)
 	}
 	fmt.Fprintln(os.Stderr, report)
+	if hiddenNote != "" {
+		fmt.Fprintln(os.Stderr, hiddenNote)
+	}
 }

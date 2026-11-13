@@ -6,11 +6,12 @@
 //	parch -o page.html https://example.com
 //	parch -f mht https://example.com           → Chrome MHTML instead of HTML
 //	parch -f png https://example.com           → full-page screenshot
-//	parch -links new-tab https://example.com   → external links open in a new tab
-//	parch -width 1280 https://example.com      → render at a 1280px-wide layout
+//	parch --links new-tab https://example.com  → external links open in a new tab
+//	parch --width 1280 https://example.com     → render at a 1280px-wide layout
 //	parch -M "phrase" https://example.com      → mark matches at capture time
-//	parch -cache ~/.parch/cache https://…      → reuse an HTTP cache across runs
+//	parch --cache ~/.parch/cache https://…     → reuse an HTTP cache across runs
 //	parch https://example.com > page.html      → content on stdout when piped
+//	parch ./saved-page.html                    → a file on disk is captured too
 //
 // Defaults, a shared cache directory, an output directory, and an output
 // filename template can also be set in a TOML config file — see the internal
@@ -33,6 +34,7 @@ import (
 	"github.com/goodblaster/logos"
 	"github.com/goodblaster/parcher/parchmint/capture"
 	"github.com/goodblaster/parcher/parchmint/internal/config"
+	"github.com/goodblaster/parcher/parchmint/textlayer"
 	"github.com/goodblaster/parcher/pscription/pipeline"
 	"github.com/goodblaster/parcher/pscription/pscription"
 	"github.com/goodblaster/parcher/pscription/runner"
@@ -61,6 +63,11 @@ var subcommands = map[string]func([]string){
 }
 
 func main() {
+	// Before anything can log: logos's own default writes DEBUG to stdout,
+	// so a subcommand left on it prepended log lines to `render -o -`
+	// output. The capture flow re-sets this once -v is parsed.
+	logos.SetDefaultLogger(logos.NewLogger(logos.LevelInfo, logos.ConsoleFormatter(), os.Stderr))
+
 	// Subcommands (the capture flow stays the bare `parch <url>` form).
 	if len(os.Args) > 1 {
 		if run, ok := subcommands[os.Args[1]]; ok {
@@ -68,7 +75,7 @@ func main() {
 			return
 		}
 		switch os.Args[1] {
-		case "version", "-version", "--version":
+		case "version", "--version":
 			fmt.Println("parch " + version)
 			return
 		case "help":
@@ -78,32 +85,32 @@ func main() {
 	}
 
 	var (
-		output  string
-		format  string
-		links   string
-		rxFile  string
-		profile string
-		cache   string
-		headful bool
-		timeout int
-		width   int
-		height  int
-		dpr     float64
-		paper   string
-		text    bool
-		favicon bool
-		verbose bool
+		output    string
+		format    string
+		links     string
+		rxFile    string
+		profile   string
+		cache     string
+		userAgent string
+		headful   bool
+		timeout   int
+		noText    bool
+		noFavicon bool
+		text      bool
+		favicon   bool
+		verbose   bool
+		highlight stringsFlag
 	)
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] <url>              capture a page as one file\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [options] <url|file>          capture a page as one file\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "       %s <command> [options] <args>   work with captured archives\n", os.Args[0])
 		fmt.Fprintln(os.Stderr, "\nCommands:")
 		fmt.Fprintln(os.Stderr, "  text     plain text back out of an archive (--json: the raw layer; --blocks: NDJSON)")
 		fmt.Fprintln(os.Stderr, "  lines    one plain-text line per paragraph block")
 		fmt.Fprintln(os.Stderr, "  find     grep across archives' text layers (multi-file, -l/-c/-q/-r, regex/fuzzy)")
 		fmt.Fprintln(os.Stderr, "  ocr      OCR an archive's images into its text layer (needed to mark image text)")
-		fmt.Fprintln(os.Stderr, "  mark     mark an archive and render it into any format")
+		fmt.Fprintln(os.Stderr, "  mark     mark an archive and render it into any format (--hidden reveals hidden text)")
 		fmt.Fprintln(os.Stderr, "  render   convert an archive into another format, without marking")
 		fmt.Fprintln(os.Stderr, "  version  print the parch version")
 		fmt.Fprintln(os.Stderr, "  help     usage for a command (`parch help find`)")
@@ -113,21 +120,26 @@ func main() {
 	flag.StringVarP(&output, "output", "o", "", "output file; '-' for stdout (default: config filename, else derived from URL)")
 	flag.StringVarP(&format, "format", "f", defFormat, "output format: "+formatList()+" (html is a self-contained page)")
 	flag.StringVar(&links, "links", defLinks, "link policy: keep (unchanged), new-tab (external links open in a new tab), disable (links kept but unclickable)")
-	flag.StringVar(&rxFile, "pscribe", "", "run a .rx pscription as the prep before serializing (e.g. to log in first)")
+	flag.StringVar(&rxFile, "recipe", "", "run a .rx pscription as the prep before serializing (e.g. to log in first) — same flag as pscribe's")
+	flag.StringVar(&rxFile, "pscribe", "", "deprecated spelling of --recipe")
+	_ = flag.CommandLine.MarkDeprecated("pscribe", "use --recipe")
 	flag.StringVar(&profile, "profile", "", "persistent Chrome user-data dir; log in once and reuse the session")
 	flag.StringVar(&cache, "cache", "", "shared Chrome HTTP cache dir; reused across runs to speed up repeat loads")
+	flag.StringVar(&userAgent, "user-agent", "", "user agent to announce (default: the browser's own Chrome one)")
 	flag.BoolVar(&headful, "show", false, "launch a visible browser (e.g. to log in at a wait:user step)")
 	flag.IntVar(&timeout, "timeout", defTimeout, "timeout in seconds")
-	var highlight stringsFlag
-	flag.IntVar(&width, "width", 0, "viewport/layout width in px — picks the responsive breakpoint (0 = default 1600)")
-	flag.IntVar(&height, "height", 0, "viewport height in px (0 = default 900); pages laid out in an unrealistically short viewport mis-render")
-	flag.Float64Var(&dpr, "dpr", 0, "device pixel ratio: output pixels per CSS pixel, e.g. 2 for retina rasters (0 = 1)")
-	flag.StringVar(&paper, "paper", "", "pdf sheet size, independent of -width: auto (default, sheet follows the layout), letter, legal, tabloid, a3, a4, a5, inches (10.5), or WxH (8.5x11)")
-	flag.BoolVar(&text, "text", true, "embed the text layer in HTML archives (read back with 'parch text <file>')")
-	flag.BoolVar(&favicon, "favicon", true, "embed the page favicon in HTML/MHT archives")
+	size := registerSizeFlags(flag.CommandLine, false)
+	flag.BoolVar(&noText, "no-text", false, "do not embed the text layer in HTML/MHT archives (it is what 'parch text/find/mark' read)")
+	flag.BoolVar(&noFavicon, "no-favicon", false, "do not embed the page favicon in HTML/MHT archives")
+	flag.BoolVar(&text, "text", true, "deprecated: use --no-text")
+	flag.BoolVar(&favicon, "favicon", true, "deprecated: use --no-favicon")
+	_ = flag.CommandLine.MarkDeprecated("text", "use --no-text")
+	_ = flag.CommandLine.MarkDeprecated("favicon", "use --no-favicon")
 	flag.VarP(&highlight, "mark", "M", "mark matches of this phrase at capture time, in every format (repeatable; same matching as 'parch find')")
 	flag.Var(&highlight, "highlight", "deprecated spelling of --mark")
 	_ = flag.CommandLine.MarkDeprecated("highlight", "use --mark")
+	look := registerMarkLook(flag.CommandLine, false)
+	match := registerMatchFlags(flag.CommandLine)
 	flag.BoolVarP(&verbose, "verbose", "v", false, "debug logging")
 	flag.Parse()
 
@@ -135,10 +147,7 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	url := flag.Arg(0)
-	if !strings.Contains(url, "://") {
-		url = "https://" + url
-	}
+	url := targetURL(flag.Arg(0))
 
 	// Logs go to stderr so captured content can be piped from stdout.
 	level := logos.LevelInfo
@@ -150,14 +159,16 @@ func main() {
 
 	// Layer in config: CLI flags override the config file, which overrides
 	// built-in defaults. Load first, then resolve each option by precedence.
-	cfg, loaded, err := config.Load()
+	cfg, loaded, warnings, err := config.Load()
 	if err != nil {
-		logger.With("error", err).Error("failed to read config")
-		os.Exit(1)
+		fail(fmt.Errorf("failed to read config: %w", err))
 	}
 	set := explicitFlags()
 	for _, path := range loaded {
 		logger.With("config", path).Debug("loaded config")
+	}
+	for _, w := range warnings {
+		logger.Warn("config: " + w)
 	}
 
 	format = pickStr(set, "format", format, cfg.Defaults.Format, defFormat)
@@ -165,21 +176,46 @@ func main() {
 	profile = pickStr(set, "profile", profile, cfg.Defaults.Profile, "")
 	cache = pickStr(set, "cache", cache, cfg.CacheDir, "")
 	timeout = pickInt(set, "timeout", timeout, cfg.Defaults.Timeout, defTimeout)
-	width = pickInt(set, "width", width, cfg.Defaults.Width, 0)
-	height = pickInt(set, "height", height, cfg.Defaults.Height, 0)
-	paper = pickStr(set, "paper", paper, cfg.Defaults.Paper, "")
-	favicon = pickBool(set, "favicon", favicon, cfg.Defaults.Favicon, true)
+	userAgent = pickStr(set, "user-agent", userAgent, cfg.Defaults.UserAgent, "")
+	width := pickInt(set, "width", size.width, cfg.Defaults.Width, 0)
+	height := pickInt(set, "height", size.height, cfg.Defaults.Height, 0)
+	dpr := size.dpr
+	if !set["dpr"] && cfg.Defaults.DPR != 0 {
+		dpr = cfg.Defaults.DPR
+	}
+	paper := pickStr(set, "paper", size.paper, cfg.Defaults.Paper, "")
+	// --no-X wins; the deprecated --X=false still works; then config.
+	favicon = !noFavicon && pickBool(set, "favicon", favicon, cfg.Defaults.Favicon, true)
+	text = !noText && pickBool(set, "text", text, cfg.Defaults.Text, true)
 
+	// Everything that can be wrong with the invocation is rejected here,
+	// before a browser starts: exit 2, with the flag named.
+	if err := (&sizeFlags{width: width, height: height, dpr: dpr}).validate(); err != nil {
+		usageErr(err)
+	}
+	if err := validTimeout(timeout); err != nil {
+		usageErr(err)
+	}
+	if err := validStyle(look.style); err != nil {
+		usageErr(err)
+	}
+	matchOpts := match.options()
+	for _, phrase := range highlight {
+		if _, err := textlayer.Compile(phrase, matchOpts); err != nil {
+			usageErr(err)
+		}
+	}
+	if len(highlight) == 0 && (len(look.colors) > 0 || look.style != "" || match.any()) {
+		usageErr(fmt.Errorf("matching and --mark-* options apply to -M/--mark phrases, and none was given"))
+	}
 	paperWidthIn, paperHeightIn, err := parsePaper(paper)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "parch: "+err.Error())
-		os.Exit(2)
+		usageErr(err)
 	}
 
 	backend := backendFor(format)
 	if backend == nil {
-		fmt.Fprintf(os.Stderr, "unknown format %q (want %s)\n", format, formatList())
-		os.Exit(2)
+		usageErr(fmt.Errorf("unknown format %q (want %s)", format, formatList()))
 	}
 
 	// Prep recipe: either the default staticize, or a custom pscription
@@ -189,13 +225,11 @@ func main() {
 	if rxFile != "" {
 		p, err := pscription.ParseFile(rxFile)
 		if err != nil {
-			logger.With("error", err).Error("failed to parse pscription")
-			os.Exit(1)
+			fail(fmt.Errorf("failed to parse pscription: %w", err))
 		}
 		r, _, err := p.Recipe("staticize")
 		if err != nil {
-			logger.With("error", err).Error("failed to build recipe from pscription")
-			os.Exit(1)
+			fail(fmt.Errorf("failed to build recipe from pscription: %w", err))
 		}
 		recipe = r
 	} else {
@@ -208,8 +242,7 @@ func main() {
 	case "new-tab", "disable":
 		recipe = recipe.Append(pipeline.RewriteLinksStep(links))
 	default:
-		fmt.Fprintf(os.Stderr, "unknown link policy %q (want keep, new-tab, or disable)\n", links)
-		os.Exit(2)
+		usageErr(fmt.Errorf("unknown link policy %q (want keep, new-tab, or disable)", links))
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
@@ -217,6 +250,7 @@ func main() {
 
 	runCfg := runner.DefaultConfig()
 	runCfg.Headful = headful
+	runCfg.UserAgent = userAgent
 	if width > 0 {
 		runCfg.ViewportWidth = int64(width)
 	}
@@ -229,16 +263,14 @@ func main() {
 	if profile != "" {
 		dir, err := prepareDir(config.ExpandPath(profile))
 		if err != nil {
-			logger.With("error", err).Error("bad profile dir")
-			os.Exit(1)
+			fail(err)
 		}
 		runCfg.UserDataDir = dir
 	}
 	if cache != "" {
 		dir, err := prepareDir(config.ExpandPath(cache))
 		if err != nil {
-			logger.With("error", err).Error("bad cache dir")
-			os.Exit(1)
+			fail(err)
 		}
 		runCfg.DiskCacheDir = dir
 		logger.With("cache", dir).Debug("using shared HTTP cache")
@@ -253,13 +285,15 @@ func main() {
 		TextLayer:     text && capture.CarriesLayer(backend),
 		Favicon:       favicon && capture.CarriesLayer(backend),
 		Highlight:     highlight,
+		Match:         matchOpts,
+		MarkColors:    look.colors,
+		MarkStyle:     look.style,
 		PaperWidthIn:  paperWidthIn,
 		PaperHeightIn: paperHeightIn,
 	}
 	snap, err := capture.CaptureWithOptions(ctx, url, runCfg, recipe, backend, opts)
 	if err != nil {
-		logger.With("error", err).Error("capture failed")
-		os.Exit(1)
+		fail(fmt.Errorf("capture failed: %w", err))
 	}
 
 	// Decide the destination now that we have the title (needed by {title}).
@@ -267,19 +301,16 @@ func main() {
 
 	if toStdout {
 		if _, err := os.Stdout.Write(snap.Bytes); err != nil {
-			logger.With("error", err).Error("failed to write to stdout")
-			os.Exit(1)
+			fail(fmt.Errorf("failed to write to stdout: %w", err))
 		}
 	} else {
 		if dir := filepath.Dir(dest); dir != "." {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
-				logger.With("error", err).Error("failed to create output dir")
-				os.Exit(1)
+				fail(fmt.Errorf("failed to create output dir: %w", err))
 			}
 		}
 		if err := os.WriteFile(dest, snap.Bytes, 0644); err != nil {
-			logger.With("error", err).Error("failed to write output")
-			os.Exit(1)
+			fail(fmt.Errorf("failed to write output: %w", err))
 		}
 	}
 
@@ -302,12 +333,10 @@ func runHelpCommand(args []string) {
 		return
 	}
 	if run, ok := subcommands[args[0]]; ok {
-		run([]string{"-help"})
+		run([]string{"--help"})
 		return
 	}
-	fmt.Fprintf(os.Stderr, "parch: unknown command %q\n", args[0])
-	flag.Usage()
-	os.Exit(2)
+	usageErr(fmt.Errorf("unknown command %q (try `parch help`)", args[0]))
 }
 
 // backendFor resolves -f to a backend. Backends register themselves in
@@ -427,7 +456,27 @@ func prepareDir(dir string) (string, error) {
 	return dir, nil
 }
 
-// deriveFilename turns a URL into a safe base filename.
+// targetURL turns the capture argument into a URL: one that already has a
+// scheme is used as given, a path to an existing file becomes its file: URL
+// (so a page saved on disk can be captured like a live one), and anything
+// else is taken for a host and gets https://.
+func targetURL(arg string) string {
+	if strings.Contains(arg, "://") {
+		return arg
+	}
+	if info, err := os.Stat(arg); err == nil && !info.IsDir() {
+		if abs, err := filepath.Abs(arg); err == nil {
+			return fileURL(abs)
+		}
+	}
+	return "https://" + arg
+}
+
+// deriveFilename turns a URL into a safe base filename: scheme and "www."
+// dropped, every character a filesystem or shell objects to replaced, and
+// the result capped so a long query string cannot push the name past the
+// filesystem's limit — which used to fail the write after the whole capture
+// had been paid for.
 func deriveFilename(url string) string {
 	name := url
 	if i := strings.Index(name, "://"); i != -1 {
@@ -436,10 +485,17 @@ func deriveFilename(url string) string {
 	name = strings.TrimPrefix(name, "www.")
 	name = strings.Map(func(r rune) rune {
 		switch r {
-		case '/', '?', '&', '=', ':', '%', '#':
+		case '/', '?', '&', '=', ':', '%', '#', '\\', '*', '|', '"', '<', '>':
+			return '_'
+		}
+		if r < 0x20 {
 			return '_'
 		}
 		return r
 	}, name)
-	return strings.Trim(name, "_")
+	name = strings.Trim(config.Truncate(strings.Trim(name, "_."), 200), "_.")
+	if name == "" {
+		name = "page"
+	}
+	return name
 }

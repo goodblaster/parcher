@@ -3,6 +3,7 @@ package textlayer
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf16"
@@ -10,7 +11,7 @@ import (
 )
 
 // Matcher is the one seam every consumer of matching goes through:
-// `parch find`, capture-time -highlight, `parch mark`, and `parch pdf`
+// `parch find`, capture-time -M, `parch mark`, and `parch render -f pdf`
 // all hold a Matcher and call FindBlock, so a new match mode lights up
 // everywhere at once. Match logic lives here, behind this interface —
 // never in cmd/parch or capture.
@@ -71,9 +72,19 @@ type MatchOptions struct {
 	// cells" is InTypes: td,th.
 	InTypes []string
 
-	// Source limits matching to "ocr" blocks (text `parch index` read
+	// Source limits matching to "ocr" blocks (text `parch ocr` read
 	// out of images) or "dom" blocks (page text). Empty = both.
 	Source string
+
+	// Hidden opts in to hidden text (Layer.Hidden blocks), by reason:
+	// HiddenAll, or any of HiddenReasons. Empty — the default — matches
+	// visible text only, so a matcher handed a hidden block returns nothing
+	// unless asked. HiddenAll does not include HiddenPrep; name it to get it.
+	Hidden []string
+
+	// HiddenOnly restricts matching to the hidden blocks Hidden selects
+	// (HiddenAll when Hidden is empty) — for auditing what a page hides.
+	HiddenOnly bool
 }
 
 // maxFuzzy caps the edit-distance budget: beyond 2–3 nearly everything
@@ -127,17 +138,35 @@ func Compile(query string, opts MatchOptions) (Matcher, error) {
 		core = q
 	}
 
-	if len(opts.InTypes) > 0 || opts.Source != "" {
-		s := scopedMatcher{core: core, source: opts.Source}
-		if len(opts.InTypes) > 0 {
-			s.types = make(map[string]bool, len(opts.InTypes))
-			for _, t := range opts.InTypes {
-				s.types[strings.TrimSpace(t)] = true
-			}
+	// Always scoped: the visibility predicate has a non-trivial default
+	// (hidden blocks do not match), so there is no "unscoped" matcher.
+	s := scopedMatcher{core: core, source: opts.Source, hiddenOnly: opts.HiddenOnly}
+	if len(opts.InTypes) > 0 {
+		s.types = make(map[string]bool, len(opts.InTypes))
+		for _, t := range opts.InTypes {
+			s.types[strings.TrimSpace(t)] = true
 		}
-		return s, nil
 	}
-	return core, nil
+	hidden := opts.Hidden
+	if opts.HiddenOnly && len(hidden) == 0 {
+		hidden = []string{HiddenAll}
+	}
+	if len(hidden) > 0 {
+		s.hidden = make(map[string]bool, len(hidden))
+		for _, why := range hidden {
+			why = strings.TrimSpace(why)
+			if why == HiddenAll {
+				for _, r := range HiddenReasons {
+					if r != HiddenPrep {
+						s.hidden[r] = true
+					}
+				}
+				continue
+			}
+			s.hidden[why] = true
+		}
+	}
+	return s, nil
 }
 
 // scopedMatcher delegates to core only for blocks that pass the type
@@ -147,9 +176,19 @@ type scopedMatcher struct {
 	core   Matcher
 	types  map[string]bool // nil = every type
 	source string          // "ocr", "dom", or "" for both
+
+	hidden     map[string]bool // hidden reasons to match; nil = visible only
+	hiddenOnly bool            // skip visible blocks
 }
 
 func (m scopedMatcher) FindBlock(b *Block) []Hit {
+	if b.Why != "" {
+		if !m.hidden[b.Why] {
+			return nil
+		}
+	} else if m.hiddenOnly {
+		return nil
+	}
 	if m.types != nil && !m.types[b.Type] {
 		return nil
 	}
@@ -168,8 +207,10 @@ func (m scopedMatcher) FindBlock(b *Block) []Hit {
 	return m.core.FindBlock(b)
 }
 
-// validate rejects option combinations that would silently mean
+// Validate rejects option combinations that would silently mean
 // something other than what was asked.
+func (opts MatchOptions) Validate() error { return opts.validate() }
+
 func (opts MatchOptions) validate() error {
 	if opts.Regex && opts.Fixed {
 		return fmt.Errorf("regex (-e) and fixed (-F) are mutually exclusive")
@@ -196,6 +237,12 @@ func (opts MatchOptions) validate() error {
 	case "", "ocr", "dom":
 	default:
 		return fmt.Errorf("source must be ocr or dom, got %q", opts.Source)
+	}
+	for _, why := range opts.Hidden {
+		why = strings.TrimSpace(why)
+		if why != HiddenAll && !slices.Contains(HiddenReasons, why) {
+			return fmt.Errorf("unknown hidden reason %q (want all, or any of %s)", why, strings.Join(HiddenReasons, ", "))
+		}
 	}
 	return nil
 }
@@ -382,11 +429,17 @@ func utf16Offset(s string) func(int) int {
 	}
 }
 
-// FindAll runs a matcher over every block of the layer, in block order.
+// FindAll runs a matcher over every block of the layer: the visible blocks
+// in order, then the hidden ones. Hidden blocks only produce hits when the
+// matcher was compiled with MatchOptions.Hidden — the matcher decides, so
+// callers never filter by visibility themselves.
 func FindAll(m Matcher, layer *Layer) []Hit {
 	var hits []Hit
 	for i := range layer.Blocks {
 		hits = append(hits, m.FindBlock(&layer.Blocks[i])...)
+	}
+	for i := range layer.Hidden {
+		hits = append(hits, m.FindBlock(&layer.Hidden[i])...)
 	}
 	return hits
 }

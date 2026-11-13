@@ -14,7 +14,7 @@ examples/formats/run.sh https://your.site    # your own URL
 | [`search-and-mark/`](search-and-mark) | **The full loop**: capture test-site-1 → OCR its images (`parch ocr`) → search the file (`parch find "music"` hits music-service cover art) → write a copy with several phrases highlighted, including inside images (`parch mark --grayscale`). |
 | [`mark-at-capture/`](mark-at-capture) | Capture-time `-M`: the same phrases marked in `html`, `pdf`, and `png` output — markup in the archive, pixels in the renders. |
 | [`formats/`](formats) | Capture one page as `html`, `mht`, `pdf`, `png`, `jpeg`, `webp` and compare sizes. |
-| [`custom-prep/`](custom-prep) | `parch --pscribe` — prepare the page with a `.rx` pscription (built-in steps + your own script) before archiving. |
+| [`custom-prep/`](custom-prep) | `parch --recipe` — prepare the page with a `.rx` pscription (built-in steps + your own script) before archiving. |
 | [`links/`](links) | The three link policies (`keep`, `new-tab`, `disable`). |
 | [`config/`](config) | A `.parch/config` TOML file: default flags, a shared HTTP cache, an output dir, and a `{host}/{date}/{title}.{ext}` filename template. |
 
@@ -55,6 +55,6 @@ pscribe https://blog.site @links -only links | jq -r '.[].url' | xargs -n1 parch
 
 ## Behind a login
 
-`parch --pscribe login.rx --show <url>` runs a headful pscription (log in by hand at
+`parch --recipe login.rx --show <url>` runs a headful pscription (log in by hand at
 a `wait:user` step) and then archives the authenticated page. See pscribe's
 `examples/login/` for the pscription and credential-separation pattern.

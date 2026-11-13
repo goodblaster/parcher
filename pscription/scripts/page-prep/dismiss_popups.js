@@ -11,7 +11,12 @@
 //   - After clicking, leftover gate/preloader wrappers are removed from the
 //     DOM so they cannot appear in the capture.
 //
-// Returns { clicked, removed, closedDialogs } for logging.
+//   - Native <dialog>s are closed only when MODAL (or named like an
+//     overlay): a non-modal <dialog open> is a content panel the page chose
+//     to show, and closing every dialog[open] deleted those from archives.
+//   - Popover promos (the Popover API's top layer) are hidden the same way.
+//
+// Returns { clicked, removed, closedDialogs, closedPopovers } for logging.
 (() => {
     const MAX_CLICKS = 6;
     let clicked = 0;
@@ -22,10 +27,17 @@
     // through getAttribute so we operate on plain strings.
     const cls = (el) => (el.getAttribute && el.getAttribute('class')) || '';
 
+    // checkVisibility walks the ANCESTOR chain, which the element-only test
+    // below it cannot: a button inside a dialog faded to opacity:0, or
+    // inside content-visibility:hidden, has a box and its own opacity of 1,
+    // and used to get clicked.
     const isVisible = (el) => {
         if (!el.isConnected) return false;
         const rect = el.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) return false;
+        if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true })) {
+            return false;
+        }
         const style = window.getComputedStyle(el);
         return style.display !== 'none' &&
             style.visibility !== 'hidden' &&
@@ -111,14 +123,36 @@
         }
     }
 
-    // Native <dialog> elements.
+    // Native <dialog> elements: modal ones block the page by definition;
+    // a non-modal one is closed only if it names itself as overlay chrome.
+    const overlayNamed = (el) => overlayClassRe.test(cls(el)) || overlayClassRe.test(el.id || '');
     for (const dialog of document.querySelectorAll('dialog[open]')) {
+        let modal = false;
+        try { modal = dialog.matches(':modal'); } catch (e) { /* old engine */ }
+        if (!modal && !overlayNamed(dialog)) continue;
         try {
             dialog.close();
         } catch (e) {
             dialog.removeAttribute('open');
         }
         closedDialogs++;
+    }
+
+    // Popovers sit in the top layer above everything, like a modal dialog.
+    // Hide the ones that look like promos: named as an overlay, or covering
+    // a large share of the viewport. A small open popover (a menu, a
+    // tooltip) is left as the page had it.
+    let closedPopovers = 0;
+    let openPopovers = [];
+    try { openPopovers = document.querySelectorAll(':popover-open'); } catch (e) { /* old engine */ }
+    for (const pop of openPopovers) {
+        const r = pop.getBoundingClientRect();
+        const share = (r.width * r.height) / (window.innerWidth * window.innerHeight);
+        if (!overlayNamed(pop) && share < 0.25) continue;
+        try {
+            pop.hidePopover();
+            closedPopovers++;
+        } catch (e) { /* not hideable */ }
     }
 
     // Remove gate/preloader remnants outright. By the time this script runs
@@ -167,5 +201,5 @@
         unlock(document.body);
     } catch (e) { /* document mid-navigation */ }
 
-    return { clicked, removed, closedDialogs };
+    return { clicked, removed, closedDialogs, closedPopovers };
 })

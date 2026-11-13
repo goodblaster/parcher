@@ -176,10 +176,13 @@ func (r *renderer) html(section *sections.Section) ([]byte, error) {
 				out.WriteString(replacement)
 				continue
 			}
-			// Both rewrites must run before the token is emitted, so neither
-			// short-circuits the other.
+			// Every rewrite must run before the token is emitted, so none
+			// short-circuits another. restoreHidden goes first: it puts the
+			// element's original style attribute back, which rewriteAttrs
+			// then inlines like any other.
+			restored := restoreHidden(&token)
 			rewritten := r.rewriteAttrs(&token, base)
-			if reviveShadowRoot(&token) || rewritten {
+			if reviveShadowRoot(&token) || rewritten || restored {
 				out.WriteString(token.String())
 				continue
 			}
@@ -195,6 +198,38 @@ func (r *renderer) html(section *sections.Section) ([]byte, error) {
 			out.Write(tokenizer.Raw())
 		}
 	}
+}
+
+// restoreHidden undoes pscription's preserve-hidden-attr step, reporting
+// whether it changed anything.
+//
+// Chrome's MHTML writer drops any element with a `hidden` attribute, so the
+// capture trades the attribute for data-parchmint-hidden (holding the
+// original value), freezes the computed display inline, and stashes the
+// element's own style attribute in data-parchmint-style. Here the element
+// gets all three back exactly as the page had them: `hidden` with its value,
+// the original style (or none), and no trace of the detour.
+func restoreHidden(token *html.Token) bool {
+	value, ok := attr(*token, "data-parchmint-hidden")
+	if !ok {
+		return false
+	}
+	style, hadStyle := attr(*token, "data-parchmint-style")
+
+	kept := token.Attr[:0]
+	for _, a := range token.Attr {
+		switch strings.ToLower(a.Key) {
+		case "data-parchmint-hidden", "data-parchmint-style", "style", "hidden":
+		default:
+			kept = append(kept, a)
+		}
+	}
+	kept = append(kept, html.Attribute{Key: "hidden", Val: value})
+	if hadStyle {
+		kept = append(kept, html.Attribute{Key: "style", Val: style})
+	}
+	token.Attr = kept
+	return true
 }
 
 // reviveShadowRoot renames Blink's `shadowmode` attribute to the standard
@@ -241,7 +276,7 @@ func (r *renderer) stylesheetLink(token html.Token, base *url.URL) (string, bool
 		return "", false
 	}
 
-	text, err := r.stylesheet(section)
+	text, err := r.stylesheet(section, base)
 	if err != nil {
 		r.warn("stylesheet %s: %v", href, err)
 		return "", false
@@ -348,7 +383,7 @@ func (r *renderer) inlineRef(ref string, base *url.URL) string {
 		return ref
 	}
 
-	uri, err := r.dataURI(section)
+	uri, err := r.dataURI(section, base)
 	if err != nil {
 		r.warn("inline %s: %v", ref, err)
 		return ref
@@ -359,7 +394,7 @@ func (r *renderer) inlineRef(ref string, base *url.URL) string {
 
 // dataURI renders section as a data: URI, recursing into stylesheets and
 // frames so their own references are inlined too.
-func (r *renderer) dataURI(section *sections.Section) (string, error) {
+func (r *renderer) dataURI(section *sections.Section, parent *url.URL) (string, error) {
 	if cached, ok := r.inlined[section]; ok {
 		return cached, nil
 	}
@@ -379,7 +414,7 @@ func (r *renderer) dataURI(section *sections.Section) (string, error) {
 	switch {
 	case isCSS(section):
 		var text string
-		text, err = r.stylesheet(section)
+		text, err = r.stylesheet(section, parent)
 		data = []byte(text)
 	case isHTML(section):
 		data, err = r.html(section)
@@ -397,7 +432,16 @@ func (r *renderer) dataURI(section *sections.Section) (string, error) {
 }
 
 // stylesheet returns the section's CSS with its own references inlined.
-func (r *renderer) stylesheet(section *sections.Section) (string, error) {
+//
+// parent is the base of whatever referred to this sheet. It matters for one
+// kind of part: Blink stores an inline <style> as a part whose
+// Content-Location is a cid: URI, and a relative url() cannot resolve against
+// that — the sheet lived IN the document, so the document's base is its base.
+// Resolving against the cid: left every relative url() in an inline <style>
+// dangling in the HTML output while the .mht of the same page carried the
+// resource (measured: a background-image the part list held, pointing at
+// nothing).
+func (r *renderer) stylesheet(section *sections.Section, parent *url.URL) (string, error) {
 	if r.active[section] {
 		return "", errors.New("reference cycle")
 	}
@@ -410,6 +454,9 @@ func (r *renderer) stylesheet(section *sections.Section) (string, error) {
 	}
 
 	base := parseURL(section.Headers.Get("Content-Location"))
+	if base == nil || base.Scheme == "cid" {
+		base = parent
+	}
 
 	return css.Rewrite(string(data), func(ref string) string {
 		return r.inlineRef(ref, base)

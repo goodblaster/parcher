@@ -2,6 +2,7 @@ package textlayer
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 
@@ -34,15 +35,15 @@ func pdfConf() *model.Configuration {
 // prior copy so re-embedding is idempotent.
 func EmbedInPDF(pdf, layerJSON []byte) ([]byte, error) {
 	conf := pdfConf()
-	ctx, err := api.ReadValidateAndOptimize(bytes.NewReader(pdf), conf)
+	ctx, err := api.ReadValidateAndOptimize(context.Background(), bytes.NewReader(pdf), conf, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read pdf: %w", err)
 	}
 	// Drop an existing attachment so re-embedding is idempotent (ignore
 	// "not found").
-	_, _ = ctx.RemoveAttachment(model.Attachment{ID: PDFLayerName})
+	_, _ = ctx.RemoveAttachment(context.Background(), model.Attachment{ID: PDFLayerName})
 
-	if err := ctx.AddAttachment(model.Attachment{
+	if err := ctx.AddAttachment(context.Background(), model.Attachment{
 		Reader:   bytes.NewReader(layerJSON),
 		ID:       PDFLayerName,
 		FileName: PDFLayerName,
@@ -52,7 +53,7 @@ func EmbedInPDF(pdf, layerJSON []byte) ([]byte, error) {
 	}
 
 	var buf bytes.Buffer
-	if err := api.Write(ctx, &buf, conf); err != nil {
+	if err := api.Write(context.Background(), ctx, &buf, conf); err != nil {
 		return nil, fmt.Errorf("write pdf: %w", err)
 	}
 	return buf.Bytes(), nil
@@ -62,7 +63,7 @@ func EmbedInPDF(pdf, layerJSON []byte) ([]byte, error) {
 // ExtractAttachmentsRaw (not Attachments/ListAttachments, which return
 // metadata with a nil Reader) gives the content in memory.
 func pdfLayerBytes(pdf []byte) ([]byte, error) {
-	aa, err := api.ExtractAttachmentsRaw(bytes.NewReader(pdf), "", []string{PDFLayerName}, pdfConf())
+	aa, err := api.ExtractAttachmentsRaw(context.Background(), bytes.NewReader(pdf), "", []string{PDFLayerName}, pdfConf())
 	if err != nil {
 		return nil, fmt.Errorf("read pdf attachments: %w", err)
 	}

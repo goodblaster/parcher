@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/goodblaster/logos"
+	"github.com/goodblaster/parcher/pscription/internal/log"
 )
 
 // Fetch concurrency is bounded PER HOST, not globally, for the same
@@ -104,6 +104,7 @@ func (g *hostGate) acquire(ctx context.Context, rawURL string) (func(), bool) {
 // resource kind in logs.
 func fetchAllAsDataURLs(ctx context.Context, urls []string, what string) (map[string]string, int, int) {
 	gate := newHostGate(perHostLimit(), maxFetchConcurrency)
+	userAgent := fetchUserAgent(ctx)
 	out := make(map[string]string, len(urls))
 	seen := make(map[string]bool, len(urls))
 	var (
@@ -129,11 +130,15 @@ func fetchAllAsDataURLs(ctx context.Context, urls []string, what string) (map[st
 			}
 			defer release()
 
-			dataURL, err := fetchAsDataURL(ctx, fetchClient, u)
+			dataURL, err := fetchAsDataURL(ctx, fetchClient, u, userAgent)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
-				logos.With("url", u).With("error", err).Debug("failed to fetch " + what)
+				// The reason as a string: the logger renders an error VALUE as
+				// "{}", which is how every failed fetch came to log error={}
+				// and the cause of a missing resource (403, timeout) was
+				// never visible.
+				log.With("url", u).With("reason", err.Error()).Debug("failed to fetch " + what)
 				failed++
 				return
 			}

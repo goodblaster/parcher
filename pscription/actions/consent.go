@@ -49,7 +49,10 @@ func PreseedConsentCookies(target string) chromedp.ActionFunc {
 			return errors.Wrapf(err, "cannot parse target URL %q", target)
 		}
 		if u.Host == "" {
-			return errors.Newf("target URL %q has no host", target)
+			// file: and other hostless URLs have no cookie jar to seed. This
+			// used to be an error, and as a pre-navigation action it failed
+			// the whole session: a page on disk could not be captured.
+			return nil
 		}
 		host := u.Hostname()
 		// Cover both the exact host and the registrable parent so

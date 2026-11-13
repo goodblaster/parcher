@@ -11,7 +11,15 @@
 //   - skipped if it holds a meaningful share of the page's text (a fixed
 //     hero/article container is content, not chrome)
 //
-// Returns { removed, unlocked } for logging.
+// What an overlay leaves behind is cleaned up too, but only when something
+// was actually removed: the scroll lock (overflow AND the position:fixed
+// body trick, same as dismiss_popups.js), and `inert` on the page's
+// top-level containers — modal libraries set it on everything behind the
+// dialog, and with the dialog deleted rather than closed nothing ever takes
+// it off, leaving an archive whose text cannot be selected or found with
+// the browser's find-in-page.
+//
+// Returns { removed, unlocked, uninerted } for logging.
 (() => {
     let removed = 0;
 
@@ -29,6 +37,9 @@
         const style = window.getComputedStyle(el);
         if (style.position !== 'fixed' && style.position !== 'sticky') continue;
         if (style.display === 'none' || style.visibility === 'hidden') continue;
+        // Ancestors count: an overlay inside a faded-out or hidden wrapper
+        // is not covering anything.
+        if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
 
         const rect = el.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) continue;
@@ -69,7 +80,23 @@
             el.style.setProperty('overflow', 'auto', 'important');
             unlocked++;
         }
+        // The other common lock: body pinned with position:fixed. Only
+        // undone when an overlay was removed — a page may pin its own body.
+        if (removed > 0 && style.position === 'fixed') {
+            el.style.setProperty('position', 'static', 'important');
+            unlocked++;
+        }
     }
 
-    return { removed, unlocked };
+    let uninerted = 0;
+    if (removed > 0 && document.body) {
+        for (const el of [document.body, ...document.body.children]) {
+            if (el.hasAttribute('inert')) {
+                el.removeAttribute('inert');
+                uninerted++;
+            }
+        }
+    }
+
+    return { removed, unlocked, uninerted };
 })

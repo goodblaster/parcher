@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/goodblaster/logos"
+	"github.com/goodblaster/parcher/pscription/internal/log"
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
@@ -61,7 +61,7 @@ func InlineCrossOriginStylesheets() chromedp.ActionFunc {
 		for _, href := range result.Hrefs {
 			css, err := fetchStylesheet(ctx, client, href)
 			if err != nil {
-				logos.With("href", href).With("error", err).Debug("could not fetch cross-origin stylesheet")
+				log.With("href", href).With("reason", err.Error()).Debug("could not fetch cross-origin stylesheet")
 				failed++
 				continue
 			}
@@ -71,7 +71,7 @@ func InlineCrossOriginStylesheets() chromedp.ActionFunc {
 				Reason  string `json:"reason"`
 			}
 			if err := chromedp.Run(ctx, js.InlineSheetText.Action(&res, href, absolutizeRefs(css, href))); err != nil {
-				logos.With("href", href).With("error", err).Debug("could not inline stylesheet")
+				log.With("href", href).With("reason", err.Error()).Debug("could not inline stylesheet")
 				failed++
 				continue
 			}
@@ -80,7 +80,7 @@ func InlineCrossOriginStylesheets() chromedp.ActionFunc {
 			}
 		}
 
-		logos.With("inlined", inlined).With("failed", failed).With("found", len(result.Hrefs)).
+		log.With("inlined", inlined).With("failed", failed).With("found", len(result.Hrefs)).
 			Debug("inlined cross-origin stylesheets")
 		return nil
 	}

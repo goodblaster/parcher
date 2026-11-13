@@ -8,8 +8,8 @@ import (
 	"github.com/goodblaster/parcher/parchmint/textlayer"
 )
 
-// matchFlags holds the matching-mode flags shared by the find, mark, and
-// pdf subcommands, so every consumer of the textlayer matcher exposes the
+// matchFlags holds the matching-mode flags shared by capture-time -M, find
+// and mark, so every consumer of the textlayer matcher exposes the
 // same modes with the same names.
 type matchFlags struct {
 	regex      bool
@@ -53,7 +53,13 @@ func (m *matchFlags) options() textlayer.MatchOptions {
 	return opts
 }
 
-// validStyle vets the shared -style value for mark/pdf.
+// any reports whether a matching flag was given at all.
+func (m *matchFlags) any() bool {
+	return m.regex || m.ignoreCase || m.fuzzy != 0 || m.wholeWord || m.caseSens || m.fixed ||
+		m.inTypes != "" || m.source != ""
+}
+
+// validStyle vets the shared --mark-style value.
 func validStyle(s string) error {
 	switch s {
 	case "", "bg", "underline", "box", "bold":
