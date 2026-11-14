@@ -324,10 +324,10 @@ func TestHyperlinksAndScriptsHandled(t *testing.T) {
 	if len(doc.Sections) != 2 {
 		t.Fatalf("got %d sections, want 2: %v", len(doc.Sections), locations(doc))
 	}
-	// A text body carries the CRLF and blank line that separate it from the
-	// next boundary, exactly as a parsed section does.
+	// A text body ends with one line terminator. The line break before the
+	// next boundary is the writer's, not part of the body.
 	script := section(t, doc, "app.js")
-	if script.Body != "alert(1)\r\n\r\n" {
+	if script.Body != "alert(1)\r\n" {
 		t.Errorf("script body = %q", script.Body)
 	}
 }

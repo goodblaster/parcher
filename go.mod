@@ -7,7 +7,7 @@ require (
 	github.com/chromedp/cdproto v0.160.1
 	github.com/chromedp/chromedp v0.23.0
 	github.com/goodblaster/errors v0.1.0
-	github.com/goodblaster/go-mht v0.0.1
+	github.com/goodblaster/go-mht v0.0.2
 	github.com/goodblaster/logos v0.2.0
 	github.com/pdfcpu/pdfcpu v0.16.4
 	github.com/spf13/pflag v1.1.0

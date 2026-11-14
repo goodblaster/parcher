@@ -455,17 +455,18 @@ func (p *part) section() sections.Section {
 
 	if isText(p.contentType) {
 		headers.Set("Content-Transfer-Encoding", "quoted-printable")
-		// The body has to end with a line terminator plus the blank line
-		// that separates it from the next boundary. A parsed section carries
-		// both in its decoded body, so a synthesized one must supply them —
-		// without the blank line the boundary is appended to the last line
-		// of content and the document no longer parses.
+		// The body ends with exactly one line terminator. The line break that
+		// separates a part from the next boundary is NOT content: go-mht
+		// writes it after the body and strips it again on parse (since
+		// v0.0.2 — before that a parsed body carried it, and this code had to
+		// supply it; doing so now leaves a stray blank line in every text
+		// part).
 		//
-		// Trailing newlines are normalized to exactly that pair rather than
-		// added to whatever is already there: a body that has been through
-		// this once already must come out of it unchanged, or repeated
-		// pack/render cycles would grow the content two bytes at a time.
-		section.Body = strings.TrimRight(string(p.data), "\r\n") + "\r\n\r\n"
+		// Trailing newlines are normalized to that one terminator rather
+		// than added to whatever is already there: a body that has been
+		// through this once already must come out of it unchanged, or
+		// repeated pack/render cycles would grow the content each time.
+		section.Body = strings.TrimRight(string(p.data), "\r\n") + "\r\n"
 	} else {
 		headers.Set("Content-Transfer-Encoding", "base64")
 		section.Body = base64.StdEncoding.EncodeToString(p.data)
