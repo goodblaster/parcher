@@ -136,7 +136,15 @@ go install github.com/goodblaster/parcher/parchmint/cmd/parch@latest
   roughly half the words on image-heavy pages. Engines are pluggable:
   `parch ocr` hands an engine every image of the archive in one batch and
   waits (`--timeout` bounds the wait), so an external OCR service can be
-  added as one more `--engine` without touching the command. Everything else in the tool
+  added as one more `--engine` without touching the command.
+
+  Two cloud engines are included but **untested against the real
+  services** (they were written from the API documentation without an
+  account): `--engine textract` (AWS Textract; set `AWS_ACCESS_KEY_ID`,
+  `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`) and `--engine google` (Google
+  Cloud Vision; set `GOOGLE_VISION_API_KEY`). They **upload the archive's
+  images to that provider** and bill your account per image, so they are
+  never chosen automatically. Everything else in the tool
   works with no OCR engine present — `ocr` is the only command that reads
   text out of images.
 
