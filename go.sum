@@ -12,8 +12,8 @@ github.com/go-json-experiment/json v1.27.2 h1:rZIyqYh+Qq+nEa+Y5iwohr8h7G/MfLJqu2
 github.com/go-json-experiment/json v1.27.2/go.mod h1:tphK2c80bpPhMOI4v6bIc2xWywPfbqi1Z06+RcrMkDg=
 github.com/goodblaster/errors v0.1.0 h1:3ZWmlbJgEF3Z3etFFHP3TdhwWU1ODxTAHWf31LHY9K4=
 github.com/goodblaster/errors v0.1.0/go.mod h1:7mOJtwZZ8ZOGzUPOLDR6iNqxQiBwBQUWAsMox2HLuDY=
-github.com/goodblaster/go-mht v0.0.1 h1:/zYAVPoOujOw5XeSpI/RbswqIFhexKy6SXlNLCBOss8=
-github.com/goodblaster/go-mht v0.0.1/go.mod h1:vVglAf2UVoAz1LdzswoyMxVxwZALbmxV16nWGwMNgA8=
+github.com/goodblaster/go-mht v0.0.2 h1:EPYP1zTcoAWk9R4Lrk2vvNa7ZGC/pMSJY6cAv35D00w=
+github.com/goodblaster/go-mht v0.0.2/go.mod h1:vVglAf2UVoAz1LdzswoyMxVxwZALbmxV16nWGwMNgA8=
 github.com/goodblaster/logos v0.2.0 h1:WiSrfycj+rzrlTlPsj7QnQMilKAYUi5KXj5ZoDQ8ZY8=
 github.com/goodblaster/logos v0.2.0/go.mod h1:m6ewgVADd401e7F4630nczg6LL4MPi9UoE4jL+X8fmY=
 github.com/google/jsonschema-go v0.4.3 h1:/DBOLZTfDow7pe2GmaJNhltueGTtDKICi8V8p+DQPd0=
