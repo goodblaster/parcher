@@ -1,4 +1,4 @@
-package ocr
+package textract
 
 import (
 	"crypto/hmac"

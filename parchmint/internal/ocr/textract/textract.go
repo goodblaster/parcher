@@ -1,4 +1,5 @@
-package ocr
+// Package textract is OCR through AWS Textract. It sends images to AWS.
+package textract
 
 import (
 	"bytes"
@@ -7,15 +8,16 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/goodblaster/parcher/parchmint/internal/ocr"
+	"github.com/goodblaster/parcher/parchmint/internal/ocr/remote"
 	"github.com/goodblaster/parcher/parchmint/internal/ocr/std"
 )
 
-// Textract is the engine name for AWS Textract.
-const Textract = "textract"
+// Name is the engine's name on the command line.
+const Name = "textract"
 
 // textractMaxBytes is the documented length limit of Document.Bytes
 // (10485760). One AWS page states 5 MB for a document passed as bytes; the
@@ -23,7 +25,7 @@ const Textract = "textract"
 // enforced here and the service has the last word.
 const textractMaxBytes = 10 << 20
 
-// textract reads images with AWS Textract's synchronous DetectDocumentText,
+// engine reads images with AWS Textract's synchronous DetectDocumentText,
 // one request per image, a few at a time.
 //
 // NOT YET RUN AGAINST THE REAL SERVICE: it was written from the API
@@ -36,7 +38,7 @@ const textractMaxBytes = 10 << 20
 // What it cannot do: take a language hint (the API has none; the
 // synchronous operations are documented as English-centric), or read WebP
 // or GIF, which are converted to PNG first.
-type textract struct {
+type engine struct {
 	endpoint string // https://textract.<region>.amazonaws.com
 	region   string
 	cred     awsCredentials
@@ -45,12 +47,12 @@ type textract struct {
 }
 
 func init() {
-	Register(Textract, func() (Recognizer, error) { return newTextractFromEnv() })
+	ocr.Register(Name, func() (ocr.Recognizer, error) { return newFromEnv() })
 }
 
-// newTextractFromEnv configures the engine from the standard AWS
+// newFromEnv configures the engine from the standard AWS
 // environment variables.
-func newTextractFromEnv() (*textract, error) {
+func newFromEnv() (*engine, error) {
 	cred := awsCredentials{
 		AccessKeyID:     os.Getenv("AWS_ACCESS_KEY_ID"),
 		SecretAccessKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
@@ -69,69 +71,38 @@ func newTextractFromEnv() (*textract, error) {
 	if endpoint == "" {
 		endpoint = "https://textract." + region + ".amazonaws.com"
 	}
-	return &textract{
+	return &engine{
 		endpoint: strings.TrimRight(endpoint, "/"),
 		region:   region,
 		cred:     cred,
-		workers:  envInt("PARCH_OCR_CONCURRENCY", 4),
+		workers:  ocr.Concurrency(4),
 		now:      time.Now,
 	}, nil
 }
 
-func envInt(name string, def int) int {
-	if v, err := strconv.Atoi(os.Getenv(name)); err == nil && v > 0 {
-		return v
-	}
-	return def
-}
+func (t *engine) Name() string { return Name }
 
-func (t *textract) Name() string { return Textract }
-
-func (t *textract) Recognize(ctx context.Context, images []Image, _ []string) ([]Result, error) {
-	results := make([]Result, len(images))
-	forEach(len(images), t.workers, func(i int) {
+func (t *engine) Recognize(ctx context.Context, images []ocr.Image, _ []string) ([]ocr.Result, error) {
+	results := make([]ocr.Result, len(images))
+	ocr.ForEach(len(images), t.workers, func(i int) {
 		lines, err := t.one(ctx, images[i])
-		results[i] = Result{ID: images[i].ID, Lines: lines, Err: err}
+		results[i] = ocr.Result{ID: images[i].ID, Lines: lines, Err: err}
 	})
 	// A failure every image shares is a configuration problem, not thirty
 	// image problems: report it once, as the batch error.
 	if len(results) > 0 {
 		first := results[0].Err
-		if isAuthError(first) {
+		if remote.IsAuthError(first) {
 			return nil, first
 		}
 	}
 	return results, nil
 }
 
-// serviceError is a failure the service itself reported.
-type serviceError struct {
-	Service, Code, Message string
-	Status                 int
-}
-
-func (e *serviceError) Error() string {
-	return fmt.Sprintf("%s: %s (HTTP %d): %s", e.Service, e.Code, e.Status, e.Message)
-}
-
-func isAuthError(err error) bool {
-	se, ok := err.(*serviceError)
-	if !ok {
-		return false
-	}
-	switch se.Code {
-	case "AccessDeniedException", "UnrecognizedClientException", "InvalidSignatureException",
-		"ExpiredTokenException", "MissingAuthenticationTokenException", "IncompleteSignatureException",
-		"UNAUTHENTICATED", "PERMISSION_DENIED":
-		return true
-	}
-	return se.Status == http.StatusUnauthorized || se.Status == http.StatusForbidden
-}
-
-func (t *textract) one(ctx context.Context, img Image) ([]std.Line, error) {
+func (t *engine) one(ctx context.Context, img ocr.Image) ([]std.Line, error) {
 	data := img.Data
 	if img.MIME != "image/png" && img.MIME != "image/jpeg" {
-		converted, err := toPNG(data)
+		converted, err := remote.ToPNG(data)
 		if err != nil {
 			return nil, err
 		}
@@ -146,7 +117,7 @@ func (t *textract) one(ctx context.Context, img Image) ([]std.Line, error) {
 	if err != nil {
 		return nil, err
 	}
-	status, respBody, err := doWithRetry(ctx, func() (*http.Request, error) {
+	status, respBody, err := remote.Do(ctx, func() (*http.Request, error) {
 		req, err := http.NewRequest(http.MethodPost, t.endpoint+"/", bytes.NewReader(body))
 		if err != nil {
 			return nil, err
@@ -172,7 +143,7 @@ func (t *textract) one(ctx context.Context, img Image) ([]std.Line, error) {
 			Message2 string `json:"Message"`
 		}
 		_ = json.Unmarshal(respBody, &e)
-		return nil, &serviceError{Service: "textract", Code: awsErrorCode(respBody), Status: status, Message: e.Message + e.Message2}
+		return nil, &remote.ServiceError{Service: "textract", Code: awsErrorCode(respBody), Status: status, Message: e.Message + e.Message2}
 	}
 	return parseTextract(respBody)
 }
@@ -220,7 +191,7 @@ func parseTextract(body []byte) ([]std.Line, error) {
 	}
 	word := func(b block) std.Word {
 		bb := b.Geometry.BoundingBox
-		return std.Word{Text: b.Text, Left: clamp01(bb.Left), Top: clamp01(bb.Top), Width: clamp01(bb.Width), Height: clamp01(bb.Height)}
+		return std.Word{Text: b.Text, Left: remote.Clamp01(bb.Left), Top: remote.Clamp01(bb.Top), Width: remote.Clamp01(bb.Width), Height: remote.Clamp01(bb.Height)}
 	}
 
 	var lines []std.Line
@@ -232,7 +203,7 @@ func parseTextract(body []byte) ([]std.Line, error) {
 		line := std.Line{
 			LineText:   b.Text,
 			Confidence: b.Confidence / 100,
-			Rect:       std.Rect{Left: clamp01(bb.Left), Top: clamp01(bb.Top), Width: clamp01(bb.Width), Height: clamp01(bb.Height)},
+			Rect:       std.Rect{Left: remote.Clamp01(bb.Left), Top: remote.Clamp01(bb.Top), Width: remote.Clamp01(bb.Width), Height: remote.Clamp01(bb.Height)},
 		}
 		for _, rel := range b.Relationships {
 			if rel.Type != "CHILD" {

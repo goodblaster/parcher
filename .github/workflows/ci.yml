@@ -52,6 +52,20 @@ jobs:
       # an image, OCR it with tesseract, find the word.
       - run: make ocr-check
 
+  windows-ocr:
+    # The Windows engine drives Windows.Media.Ocr through PowerShell, which
+    # nothing but a Windows machine can exercise. The test reads a fixture
+    # image with known text; if the runner has no OCR language installed it
+    # SKIPS and says so in the log, so read the log, not just the tick.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go test -v -count=1 ./parchmint/internal/ocr/...
+
   vuln:
     runs-on: ubuntu-latest
     steps:

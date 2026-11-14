@@ -3,7 +3,9 @@ package ocr
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
+	"strconv"
 	"sync"
 
 	"github.com/goodblaster/parcher/parchmint/internal/ocr/std"
@@ -52,9 +54,11 @@ type Result struct {
 //     engine that detects language itself may ignore them.
 //   - Honor ctx: `parch ocr --timeout` cancels it.
 //
-// Adding one is a single file: implement Recognizer, and Register it from
-// that file's init. It is then selectable as `parch ocr --engine <name>`
-// with no other edit. Configuration (credentials, region, endpoint) is the
+// Adding one is a package of its own under internal/ocr: implement
+// Recognizer (or Engine), Register it from the package's init, and add a
+// blank import to internal/ocr/engines. It is then selectable as
+// `parch ocr --engine <name>` with no other edit. This package holds only
+// the contract and the registry, and imports no engine. Configuration (credentials, region, endpoint) is the
 // engine's own business — read it from the environment in the factory.
 type Recognizer interface {
 	Name() string
@@ -101,30 +105,79 @@ func NewRecognizer(name string) (Recognizer, error) {
 	return factory()
 }
 
-// PerImage adapts a one-image-at-a-time Engine to Recognizer. Images are
-// read in order, one after another: the local engines are CPU-bound and
-// Apple Vision already uses every core for a single image.
-func PerImage(e Engine) Recognizer { return perImage{e} }
+// Registered reports whether an engine of that name is in this build.
+func Registered(name string) bool {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	_, ok := registry[name]
+	return ok
+}
 
-type perImage struct{ e Engine }
+// Engine is the small interface a LOCAL engine implements: read one image.
+// PerImage turns it into a Recognizer.
+type Engine interface {
+	Name() string
+	// ParseBytes reads one encoded image file. Boxes follow the std
+	// contract (fractions of the image, top-left origin).
+	ParseBytes(data []byte, langs []string) ([]std.Line, error)
+}
 
-func (p perImage) Name() string { return p.e.String() }
+// PerImage adapts a one-image-at-a-time Engine to Recognizer, reading up to
+// `workers` images at once. Results keep the order of the input, so the
+// output is the same whatever the worker count. Use 1 for an engine that
+// already spreads a single image across every core (Apple Vision).
+func PerImage(e Engine, workers int) Recognizer { return perImage{e, workers} }
+
+type perImage struct {
+	e       Engine
+	workers int
+}
+
+func (p perImage) Name() string { return p.e.Name() }
 
 func (p perImage) Recognize(ctx context.Context, images []Image, langs []string) ([]Result, error) {
-	results := make([]Result, 0, len(images))
-	for _, img := range images {
+	results := make([]Result, len(images))
+	ForEach(len(images), p.workers, func(i int) {
+		img := images[i]
 		if err := ctx.Err(); err != nil {
-			results = append(results, Result{ID: img.ID, Err: err})
-			continue
+			results[i] = Result{ID: img.ID, Err: err}
+			return
 		}
 		lines, err := p.e.ParseBytes(img.Data, langs)
-		results = append(results, Result{ID: img.ID, Lines: lines, Err: err})
-	}
+		results[i] = Result{ID: img.ID, Lines: lines, Err: err}
+	})
 	return results, nil
 }
 
-func init() {
-	for _, name := range []string{AppleVision, Tesseract, WindowsOCR} {
-		Register(name, func() (Recognizer, error) { return PerImage(New(name)), nil })
+// ForEach runs fn(i) for i in [0,n) on up to `workers` goroutines and waits
+// for all of them. fn records its own outcome.
+func ForEach(n, workers int, fn func(i int)) {
+	if workers < 1 {
+		workers = 1
 	}
+	var wg sync.WaitGroup
+	next := make(chan int)
+	for w := 0; w < min(workers, n); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range next {
+				fn(i)
+			}
+		}()
+	}
+	for i := 0; i < n; i++ {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+}
+
+// Concurrency is how many images an engine works on at once: the
+// PARCH_OCR_CONCURRENCY environment variable when set, else def.
+func Concurrency(def int) int {
+	if v, err := strconv.Atoi(os.Getenv("PARCH_OCR_CONCURRENCY")); err == nil && v > 0 {
+		return v
+	}
+	return max(def, 1)
 }
