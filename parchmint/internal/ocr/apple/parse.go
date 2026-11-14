@@ -12,8 +12,6 @@ import "C"
 
 import (
 	"encoding/json"
-	"io"
-	"os"
 	"unsafe"
 
 	"github.com/goodblaster/errors"
@@ -62,22 +60,4 @@ func (engine *Engine) ParseBytes(b []byte, langs []string) ([]std.Line, error) {
 	}
 
 	return lines, nil
-}
-
-func (engine *Engine) ParseReader(r io.Reader, langs []string) ([]std.Line, error) {
-	b, err := io.ReadAll(r)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read image reader")
-	}
-
-	return engine.ParseBytes(b, langs)
-}
-
-func (engine *Engine) ParseFile(imagePath string, langs []string) ([]std.Line, error) {
-	b, err := os.ReadFile(imagePath)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read image file")
-	}
-
-	return engine.ParseBytes(b, langs)
 }

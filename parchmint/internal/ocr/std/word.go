@@ -65,3 +65,29 @@ func (pg Page) Text() string {
 	}
 	return strings.Join(parts, " ")
 }
+
+// SetBounds recomputes the line's text and bounding rect from its words.
+// Every engine that assembles lines out of words needs exactly this.
+func (l *Line) SetBounds() {
+	var texts []string
+	var rect Rect
+	for _, w := range l.Words {
+		text := strings.TrimSpace(w.Text)
+		if text == "" {
+			continue
+		}
+		texts = append(texts, text)
+		if rect.Width == 0 || rect.Height == 0 {
+			rect = Rect{Left: w.Left, Top: w.Top, Width: w.Width, Height: w.Height}
+			continue
+		}
+		right := max(rect.Left+rect.Width, w.Left+w.Width)
+		bottom := max(rect.Top+rect.Height, w.Top+w.Height)
+		rect.Left = min(rect.Left, w.Left)
+		rect.Top = min(rect.Top, w.Top)
+		rect.Width = right - rect.Left
+		rect.Height = bottom - rect.Top
+	}
+	l.Rect = rect
+	l.LineText = strings.Join(texts, " ")
+}

@@ -1,4 +1,6 @@
-package ocr
+// Package googlevision is OCR through Google Cloud Vision. It sends images
+// to Google.
+package googlevision
 
 import (
 	"bytes"
@@ -9,11 +11,13 @@ import (
 	"os"
 	"strings"
 
+	"github.com/goodblaster/parcher/parchmint/internal/ocr"
+	"github.com/goodblaster/parcher/parchmint/internal/ocr/remote"
 	"github.com/goodblaster/parcher/parchmint/internal/ocr/std"
 )
 
-// GoogleVision is the engine name for Google Cloud Vision.
-const GoogleVision = "google"
+// Name is the engine's name on the command line.
+const Name = "google"
 
 const (
 	// Documented limits of images:annotate.
@@ -24,7 +28,7 @@ const (
 	googleMaxRawPerRequest = 7 << 20
 )
 
-// googleVision reads images with Google Cloud Vision's images:annotate,
+// engine reads images with Google Cloud Vision's images:annotate,
 // sixteen images to a request.
 //
 // NOT YET RUN AGAINST THE REAL SERVICE: it was written from the API
@@ -36,7 +40,7 @@ const (
 // Language hints are NOT sent unless PARCH_GOOGLE_VISION_HINTS=1: Google
 // documents that no hint usually gives the best result, and that a hint it
 // does not support fails the request.
-type googleVision struct {
+type engine struct {
 	endpoint string // https://vision.googleapis.com
 	apiKey   string
 	token    string // OAuth access token, alternative to apiKey
@@ -47,18 +51,18 @@ type googleVision struct {
 }
 
 func init() {
-	Register(GoogleVision, func() (Recognizer, error) { return newGoogleVisionFromEnv() })
+	ocr.Register(Name, func() (ocr.Recognizer, error) { return newFromEnv() })
 }
 
-func newGoogleVisionFromEnv() (*googleVision, error) {
-	g := &googleVision{
+func newFromEnv() (*engine, error) {
+	g := &engine{
 		endpoint: "https://vision.googleapis.com",
 		apiKey:   os.Getenv("GOOGLE_VISION_API_KEY"),
 		token:    os.Getenv("GOOGLE_VISION_ACCESS_TOKEN"),
 		project:  os.Getenv("GOOGLE_CLOUD_PROJECT"),
 		feature:  "TEXT_DETECTION",
 		hints:    os.Getenv("PARCH_GOOGLE_VISION_HINTS") == "1",
-		workers:  envInt("PARCH_OCR_CONCURRENCY", 4),
+		workers:  ocr.Concurrency(4),
 	}
 	if g.apiKey == "" && g.token == "" {
 		return nil, fmt.Errorf("the google OCR engine sends images to Google Cloud Vision and needs GOOGLE_VISION_API_KEY " +
@@ -76,10 +80,10 @@ func newGoogleVisionFromEnv() (*googleVision, error) {
 	return g, nil
 }
 
-func (g *googleVision) Name() string { return GoogleVision }
+func (g *engine) Name() string { return Name }
 
-func (g *googleVision) Recognize(ctx context.Context, images []Image, langs []string) ([]Result, error) {
-	results := make([]Result, len(images))
+func (g *engine) Recognize(ctx context.Context, images []ocr.Image, langs []string) ([]ocr.Result, error) {
+	results := make([]ocr.Result, len(images))
 	for i, img := range images {
 		results[i].ID = img.ID
 	}
@@ -105,14 +109,14 @@ func (g *googleVision) Recognize(ctx context.Context, images []Image, langs []st
 	}
 
 	batchErrs := make([]error, len(batches))
-	forEach(len(batches), g.workers, func(b int) {
+	ocr.ForEach(len(batches), g.workers, func(b int) {
 		batchErrs[b] = g.batch(ctx, images, batches[b], langs, results)
 	})
 	for b, err := range batchErrs {
 		if err == nil {
 			continue
 		}
-		if isAuthError(err) {
+		if remote.IsAuthError(err) {
 			return nil, err // every request will fail the same way
 		}
 		for _, i := range batches[b] {
@@ -124,7 +128,7 @@ func (g *googleVision) Recognize(ctx context.Context, images []Image, langs []st
 
 // batch sends one images:annotate request and files each response under
 // its image.
-func (g *googleVision) batch(ctx context.Context, images []Image, idx []int, langs []string, results []Result) error {
+func (g *engine) batch(ctx context.Context, images []ocr.Image, idx []int, langs []string, results []ocr.Result) error {
 	type request struct {
 		Image struct {
 			Content []byte `json:"content"` // base64 by encoding/json
@@ -156,7 +160,7 @@ func (g *googleVision) batch(ctx context.Context, images []Image, idx []int, lan
 		return fmt.Errorf("google vision request is %d bytes, over the %d limit", len(body), googleMaxRequestBytes)
 	}
 
-	status, respBody, err := doWithRetry(ctx, func() (*http.Request, error) {
+	status, respBody, err := remote.Do(ctx, func() (*http.Request, error) {
 		req, err := http.NewRequest(http.MethodPost, g.endpoint+"/v1/images:annotate", bytes.NewReader(body))
 		if err != nil {
 			return nil, err
@@ -195,7 +199,7 @@ func (g *googleVision) batch(ctx context.Context, images []Image, idx []int, lan
 		return fmt.Errorf("google vision: unreadable response: %w", jsonErr)
 	}
 	if status != http.StatusOK || resp.Error != nil {
-		se := &serviceError{Service: "google vision", Code: "UnknownError", Status: status}
+		se := &remote.ServiceError{Service: "google vision", Code: "UnknownError", Status: status}
 		if resp.Error != nil {
 			se.Message = resp.Error.Message
 			if resp.Error.Status != "" {
@@ -217,7 +221,7 @@ func (g *googleVision) batch(ctx context.Context, images []Image, idx []int, lan
 			continue
 		}
 		if r.Error != nil {
-			results[i].Err = &serviceError{Service: "google vision", Code: fmt.Sprintf("code %d", r.Error.Code), Status: status, Message: r.Error.Message}
+			results[i].Err = &remote.ServiceError{Service: "google vision", Code: fmt.Sprintf("code %d", r.Error.Code), Status: status, Message: r.Error.Message}
 		}
 		// Neither: an image with no text in it.
 	}
@@ -270,7 +274,7 @@ func parseGoogleText(raw json.RawMessage) ([]std.Line, error) {
 				flush := func() {
 					if len(cur.Words) > 0 {
 						cur.Confidence = confSum / float64(len(cur.Words))
-						setBounds(&cur)
+						cur.SetBounds()
 						lines = append(lines, cur)
 					}
 					cur, confSum = std.Line{}, 0
@@ -293,10 +297,10 @@ func parseGoogleText(raw json.RawMessage) ([]std.Line, error) {
 						}
 						cur.Words = append(cur.Words, std.Word{
 							Text:   text.String(),
-							Left:   clamp01(x1 / page.Width),
-							Top:    clamp01(y1 / page.Height),
-							Width:  clamp01((x2 - x1) / page.Width),
-							Height: clamp01((y2 - y1) / page.Height),
+							Left:   remote.Clamp01(x1 / page.Width),
+							Top:    remote.Clamp01(y1 / page.Height),
+							Width:  remote.Clamp01((x2 - x1) / page.Width),
+							Height: remote.Clamp01((y2 - y1) / page.Height),
 						})
 						confSum += w.Confidence
 					}
@@ -309,17 +313,4 @@ func parseGoogleText(raw json.RawMessage) ([]std.Line, error) {
 		}
 	}
 	return lines, nil
-}
-
-// setBounds fills a line's text and bounding rect from its words.
-func setBounds(line *std.Line) {
-	var texts []string
-	x1, y1, x2, y2 := 1.0, 1.0, 0.0, 0.0
-	for _, w := range line.Words {
-		texts = append(texts, w.Text)
-		x1, y1 = min(x1, w.Left), min(y1, w.Top)
-		x2, y2 = max(x2, w.Left+w.Width), max(y2, w.Top+w.Height)
-	}
-	line.LineText = strings.Join(texts, " ")
-	line.Rect = std.Rect{Left: x1, Top: y1, Width: x2 - x1, Height: y2 - y1}
 }

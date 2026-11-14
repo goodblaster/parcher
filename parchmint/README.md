@@ -119,13 +119,13 @@ go install github.com/goodblaster/parcher/parchmint/cmd/parch@latest
   every capture drives a real browser. Nothing else is needed for
   capture, `text`, `lines`, `find`, `mark`, or `pdf`.
 - **An OCR engine, only for `parch ocr`.** Nothing to install on
-  macOS; a package elsewhere:
+  macOS or Windows; a package on Linux:
 
   | platform | engine | install |
   |---|---|---|
   | macOS | Apple Vision (built in) | none |
   | Linux | Tesseract | `apt install tesseract-ocr` |
-  | Windows | Tesseract | `choco install tesseract` |
+  | Windows | Windows OCR (built in) | none — uses the OCR languages Windows has installed |
 
   `parch ocr` picks the platform default; `--engine tesseract` forces it
   anywhere. The OCR language comes from the page itself (`<html lang>`);

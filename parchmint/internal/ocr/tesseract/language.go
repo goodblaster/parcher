@@ -1,8 +1,14 @@
 package tesseract
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
+
+	"github.com/goodblaster/errors"
 )
 
 // LanguageMap maps ISO 639-1 language codes and their regional/script variations to Tesseract language codes
@@ -129,4 +135,70 @@ func NormalizeLangCode(lang string) string {
 	}
 
 	return "" // No match found
+}
+
+// installed lists the language packs this tesseract has, asked once per
+// process. It is also where a missing tesseract is reported, with what to do
+// about it, instead of once per image as a bare exec error.
+var installed = sync.OnceValues(func() (map[string]bool, error) {
+	out, err := exec.Command("tesseract", "--list-langs").CombinedOutput()
+	if err != nil {
+		return nil, errors.New("the tesseract OCR engine needs the `tesseract` program on PATH " +
+			"(Debian/Ubuntu: apt install tesseract-ocr; Fedora: dnf install tesseract; macOS: brew install tesseract)")
+	}
+	langs := map[string]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, " ") { // the header line
+			continue
+		}
+		langs[line] = true
+	}
+	return langs, nil
+})
+
+var warnedMissing sync.Map
+
+// resolveLangs turns page language hints (BCP 47, as in <html lang>) into
+// the tesseract language list for one run.
+//
+// A language whose pack is not installed is dropped with a one-time note
+// naming the package to install — passing it through makes tesseract fail on
+// EVERY image, and a stock Linux install carries English only. English is
+// always included when present: whatever language a page is written in, its
+// images are full of Latin-script brand names, units and UI words, and a
+// single-language run reads those as garbage.
+func resolveLangs(hints []string, inst map[string]bool) []string {
+	var out []string
+	add := func(l string) {
+		for _, have := range out {
+			if have == l {
+				return
+			}
+		}
+		out = append(out, l)
+	}
+	for _, hint := range hints {
+		tl := NormalizeLangCode(hint)
+		if tl == "" {
+			continue
+		}
+		if !inst[tl] {
+			if _, seen := warnedMissing.LoadOrStore(tl, true); !seen {
+				fmt.Fprintf(os.Stderr, "parch: tesseract has no %q language pack for page language %q; "+
+					"text in that language will be misread (Debian/Ubuntu: apt install tesseract-ocr-%s)\n",
+					tl, hint, strings.ReplaceAll(tl, "_", "-"))
+			}
+			continue
+		}
+		add(tl)
+	}
+	if inst["eng"] {
+		add("eng")
+	}
+	if len(out) == 0 {
+		// Nothing usable is installed; let tesseract say so itself.
+		out = []string{"eng"}
+	}
+	return out
 }

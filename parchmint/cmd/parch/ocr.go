@@ -14,6 +14,7 @@ import (
 	flag "github.com/spf13/pflag"
 
 	"github.com/goodblaster/parcher/parchmint/internal/ocr"
+	"github.com/goodblaster/parcher/parchmint/internal/ocr/engines"
 	"github.com/goodblaster/parcher/parchmint/internal/ocr/std"
 	"github.com/goodblaster/parcher/parchmint/textlayer"
 )
@@ -27,7 +28,7 @@ import (
 // command is the explicit opt-in.
 func runOCRCommand(args []string) {
 	fs := flag.NewFlagSet("ocr", flag.ExitOnError)
-	engineName := fs.String("engine", ocr.Default(), "OCR engine: "+strings.Join(ocr.Names(), ", "))
+	engineName := fs.String("engine", engines.Default(), "OCR engine: "+strings.Join(ocr.Names(), ", "))
 	timeout := fs.Int("timeout", 0, "give up after this many seconds (0 = no limit)")
 	langFlag := fs.String("lang", "", "comma-separated OCR language hints (default: the page's declared language, else en-US)")
 	minSize := fs.Int("min-size", 32, "skip images displayed smaller than this (px, either dimension)")

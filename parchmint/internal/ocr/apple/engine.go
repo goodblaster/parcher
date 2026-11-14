@@ -2,11 +2,13 @@
 
 package apple
 
+import "github.com/goodblaster/parcher/parchmint/internal/ocr"
+
 type Engine struct{}
 
-// Available reports whether this build can use Apple Vision.
-const Available = true
+func (engine *Engine) Name() string { return Name }
 
-func (engine *Engine) String() string {
-	return "apple"
+func init() {
+	// One image at a time: Vision already uses every core for one image.
+	ocr.Register(Name, func() (ocr.Recognizer, error) { return ocr.PerImage(&Engine{}, 1), nil })
 }
