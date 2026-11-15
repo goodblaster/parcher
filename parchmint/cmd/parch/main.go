@@ -99,6 +99,7 @@ func main() {
 		text      bool
 		favicon   bool
 		verbose   bool
+		strict    bool
 		highlight stringsFlag
 	)
 
@@ -141,6 +142,7 @@ func main() {
 	look := registerMarkLook(flag.CommandLine, false)
 	match := registerMatchFlags(flag.CommandLine)
 	flag.BoolVarP(&verbose, "verbose", "v", false, "debug logging")
+	flag.BoolVar(&strict, "strict", false, "fail HTML capture if snapshot resource references cannot be embedded")
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -216,6 +218,14 @@ func main() {
 	backend := backendFor(format)
 	if backend == nil {
 		usageErr(fmt.Errorf("unknown format %q (want %s)", format, formatList()))
+	}
+	if strict {
+		html, ok := backend.(capture.HTML)
+		if !ok {
+			usageErr(fmt.Errorf("--strict requires -f html"))
+		}
+		html.Strict = true
+		backend = html
 	}
 
 	// Prep recipe: either the default staticize, or a custom pscription

@@ -109,10 +109,8 @@ func (l *Loader) loadFile(target *url.URL) (*Resource, error) {
 	if path == "" {
 		return nil, errors.New("file URL has no path")
 	}
-	// A Windows-style "file:///C:/x" keeps the drive letter in the path.
-	if decoded, err := url.PathUnescape(path); err == nil {
-		path = decoded
-	}
+	// URL.Path is already decoded. Unescaping again would turn a literal
+	// filename such as image%20name.css into a different file, image name.css.
 
 	file, err := os.Open(path)
 	if err != nil {

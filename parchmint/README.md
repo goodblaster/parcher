@@ -72,6 +72,11 @@ cat page.html | parch find "phrase" -      # '-' pipes archives on stdin (find/t
                                            # searchable); parch help <cmd> for any of this
 ```
 
+HTML captures warn when snapshot resources cannot be embedded. Use
+`parch --strict URL` to fail instead of writing that incomplete HTML archive.
+This checks unresolved snapshot references; it does not certify visual fidelity
+or detect content the page never loaded. `--strict` applies to HTML capture only.
+
 More runnable demos in [examples/](examples) — each is a `run.sh` that
 builds parch and narrates what it does.
 
@@ -154,15 +159,12 @@ go install github.com/goodblaster/parcher/parchmint/cmd/parch@latest
   fix the sandbox for your system or set `PSCRIPTION_NO_SANDBOX=1`,
   understanding that it removes Chrome's isolation from the pages you load.
 
-  **Windows could need no install either.** Windows ships
-  `Windows.Media.Ocr`, which reports the word-level boxes the text layer
-  wants and reads screen-rendered text well. `internal/ocr/windows` is
-  scaffolded for it — selectable as `--engine windows`, erroring until
-  someone implements it — and its package doc carries the API sketch, the
-  build-tag layout to copy from `internal/ocr/apple`, the box
-  normalization contract, and the open question to answer first (whether
-  a stock install recognizes anything without extra language packs).
-  Contributions welcome; it needs a Windows machine to develop against.
+- **Windows** uses `Windows.Media.Ocr` through the built-in Windows
+  PowerShell 5.1 (`powershell.exe`), with one process per OCR batch.
+  No separate OCR program is needed. Recognition requires an installed
+  Windows OCR language pack; the engine tries the page's language, then
+  your preferred languages, then any available pack. If none is installed,
+  it reports what to install. PowerShell 7 (`pwsh`) is not a substitute.
 
 Runs on macOS, Linux, and Windows; the Apple Vision engine is compiled in
 on macOS only, and the rest of the tool is pure Go.
@@ -177,6 +179,4 @@ Earlier versions vendored
 (AGPL-3.0-or-later) as the HTML serializer. It has been removed outright —
 not made optional — after the native backend was measured against it.
 
-Planned: markdown export; native Windows OCR via `Windows.Media.Ocr`
-(scaffolded in `internal/ocr/windows`, so `index` would need no install
-there); a catalog application over many archives.
+Planned: markdown export; a catalog application over many archives.

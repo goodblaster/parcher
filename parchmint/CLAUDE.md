@@ -73,7 +73,26 @@ go build -o bin/ ./cmd/...
 
 **Local files are cross-origin to each other, and the loss is silent.** Chrome gives every file: URL its own opaque origin, so a page opened from disk cannot read the stylesheets sitting beside it — `sheet.cssRules` throws `SecurityError`. The sheets still load and still render, so nothing looks wrong until something reads the CSSOM: `inlineLinkedStylesheets` could read 11 of a browser-saved page's 37 sheets and silently dropped the other 26 from the HTML copy. `RenderArchive` sets `runner.Config.AllowFileAccess` (`--allow-file-access-from-files`) to put local files in one origin. It is safe THERE and not in general: the archive is a file the user asked to convert, and script execution is already disabled two lines above, so nothing in the page can use the access.
 
+**Archive DOM serialization must include shadow roots.** `RenderArchive` uses CDP
+`DOM.getOuterHTML` with `IncludeShadowDOM`, including open, closed, and nested
+roots. Page JavaScript's `outerHTML` silently drops their contents after
+loading declarative shadow DOM. Keep the original resource URLs so replacing
+an MHT document still resolves against its existing MIME parts.
+
+**HTML capture reports unresolved snapshot resources.** The default emits one
+warning summary, with details under `-v`. `--strict` rejects the result before
+writing output; it applies only to HTML capture and checks inlining failures,
+not visual fidelity or content the page never loaded.
+
 **A missing text layer never blocks mark/render.** Plenty of HTML is not a parch archive — a page saved by the browser, or captured with `--no-text` — and it converts fine. `RenderOptions.ExtractLayer` indexes the loaded page during the render and the result is embedded in the output, so the copy comes out as a proper archive (with phrases, the layer is composed from the PRE-mark extraction, same rule as capture-time marking). The page's real address is recovered from the `<!-- saved from url=(NNNN)… -->` comment browsers write (`savedFromURL`), so a reindexed layer is not stuck claiming it came from a local file. `--no-browser` cannot index — there is no rendered page — so it warns and converts without one.
+
+**PDF reindexing attaches the fresh layer.** When `ExtractLayer` is set, attach
+`RenderResult.TextLayer`, not the empty source placeholder. If extraction
+fails, omit the attachment rather than writing an invalid empty format.
+Existing indexed sources retain their original layer on export.
+
+**A file URL's `Path` is already decoded.** Never unescape it again before
+opening it: a literal `image%20name.css` must not load `image name.css`.
 
 **Leave `data:` URIs inline when packing.** Moving one into its own part and referring back to it with `cid:` is the tidier-looking design and deduplicates repeats, but those references do not resolve: a parch archive converted that way renders with every inline image a broken placeholder. Verified against a real archive with Content-ID alone, with `Content-Location: cid:…` as well (which is how Blink writes the stylesheets it stores that way), and under Blink's own `@mhtml.blink` domain — all three render broken, while the same archive with the URIs left inline renders perfectly. Blink's own cid: stylesheets do resolve in Blink's own archives; the asymmetry is unexplained, and not worth chasing when an inline data: URI always renders. Same rule inside CSS `url()`.
 

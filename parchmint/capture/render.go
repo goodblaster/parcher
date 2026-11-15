@@ -2,6 +2,7 @@ package capture
 
 import (
 	"context"
+	"github.com/chromedp/cdproto/dom"
 	"github.com/chromedp/chromedp"
 
 	"github.com/chromedp/cdproto/emulation"
@@ -308,9 +309,15 @@ func RenderArchive(ctx context.Context, cfg runner.Config, fileURL string, phras
 			// Attach the layer so `parch text`/`find` work on the .pdf
 			// exactly as they do on the source archive.
 			if toPDF {
-				layerJSON, err := layer.Marshal()
-				if err != nil {
-					return errors.Wrap(err, "marshal text layer")
+				layerJSON := res.TextLayer
+				if !opts.ExtractLayer {
+					layerJSON, err = layer.Marshal()
+					if err != nil {
+						return errors.Wrap(err, "marshal text layer")
+					}
+				}
+				if layerJSON == nil {
+					return nil // extraction failed; do not attach an invalid empty layer
 				}
 				withLayer, err := textlayer.EmbedInPDF(snap.Bytes, layerJSON)
 				if err != nil {
@@ -331,11 +338,20 @@ func RenderArchive(ctx context.Context, cfg runner.Config, fileURL string, phras
 			log.WithError(err).Warn("could not inline stylesheets; marked copy may lose styling")
 		}
 
-		var html string
-		if err := act.Evaluate(`'<!DOCTYPE html>' + document.documentElement.outerHTML`, &html).Do(ctx); err != nil {
+		// Page JS outerHTML excludes attached shadow roots, including the
+		// declarative roots restored when an archive opens. CDP includes both
+		// open and closed roots without changing the live DOM or resource URLs.
+		doc, err := chromedp.Call(ctx, dom.GetDocument, dom.GetDocumentParams{})
+		if err != nil {
+			return errors.Wrap(err, "get archive document")
+		}
+		html, err := chromedp.Call(ctx, dom.GetOuterHTML, dom.GetOuterHTMLParams{
+			NodeID: doc.Root.NodeID, IncludeShadowDOM: new(true),
+		})
+		if err != nil {
 			return errors.Wrap(err, "serialize marked document")
 		}
-		res.Bytes, res.MIME = []byte(html), "text/html"
+		res.Bytes, res.MIME = []byte(html.OuterHTML), "text/html"
 		return nil
 	})
 	if err != nil {

@@ -49,13 +49,16 @@ func init() {
 // back into the DOM by prep (pscription's materialize-form-state and
 // flatten-adopted-stylesheets), which is where they belong — every backend
 // benefits, and this one stays a serializer rather than a fidelity engine.
-type HTML struct{}
+type HTML struct {
+	// Strict fails capture when a snapshot resource cannot be inlined.
+	Strict bool
+}
 
 func (HTML) Name() string  { return "html" }
 func (HTML) Ext() string   { return ".html" }
 func (HTML) CarriesLayer() {}
 
-func (HTML) Action(snap *Snapshot) act.Func {
+func (backend HTML) Action(snap *Snapshot) act.Func {
 	return func(ctx context.Context) error {
 		// Chrome's snapshot omits CSS web fonts, so the ones the page
 		// actually loaded are embedded as data: URIs first — otherwise the
@@ -85,9 +88,8 @@ func (HTML) Action(snap *Snapshot) act.Func {
 		}
 
 		// A reference the snapshot does not carry is left as it was, which
-		// keeps a partial capture usable; it is worth knowing about but never
-		// worth failing over, so it is a debug line and a count rather than a
-		// warning per reference (a big page can produce many).
+		// keeps a partial capture usable. Report one summary warning rather
+		// than flooding stderr; strict capture rejects the partial result.
 		var unresolved int
 		out, err := render.Document(doc, render.Options{
 			// Chrome emits no <script> elements today. Asking for them to be
@@ -105,7 +107,10 @@ func (HTML) Action(snap *Snapshot) act.Func {
 			return errors.Wrap(err, "failed to inline the page snapshot")
 		}
 		if unresolved > 0 {
-			log.With("references", unresolved).Debug("some references were left as-is")
+			if backend.Strict {
+				return errors.Newf("%d resource reference(s) could not be inlined; strict capture refused an incomplete archive", unresolved)
+			}
+			log.With("references", unresolved).Warn("some resources could not be embedded; archive may be incomplete offline")
 		}
 
 		snap.MIME = "text/html"
