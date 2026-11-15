@@ -217,3 +217,22 @@ func TestUnsupportedScheme(t *testing.T) {
 		t.Error("expected an error for an unsupported scheme")
 	}
 }
+
+// A second unescape must neither miss a literal %-encoded filename nor
+// accidentally load its decoded sibling.
+func TestLoadFileWithLiteralPercent(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{"image%20name.css": "expected", "image name.css": "wrong"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := (&url.URL{Scheme: "file", Path: filepath.Join(dir, "image%20name.css")}).String()
+	resource, err := load(t, &Loader{}, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(resource.Data) != "expected" {
+		t.Fatalf("loaded wrong resource: %q", resource.Data)
+	}
+}
