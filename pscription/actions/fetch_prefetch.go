@@ -2,7 +2,6 @@ package actions
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"github.com/goodblaster/parcher/pscription/act"
@@ -23,32 +22,36 @@ import (
 type PrefetchCache struct {
 	mu    sync.Mutex
 	entry map[string]*prefetchEntry
+	gate  *hostGate
 }
 
 type prefetchEntry struct {
+	ctx     context.Context
 	done    chan struct{}
 	dataURL string
 	err     error
 }
 
 func NewPrefetchCache() *PrefetchCache {
-	return &PrefetchCache{entry: map[string]*prefetchEntry{}}
+	return &PrefetchCache{entry: map[string]*prefetchEntry{}, gate: newHostGate(perHostLimit(), maxFetchConcurrency)}
 }
 
-// start kicks off a fetch for url unless one is already recorded.
-func (c *PrefetchCache) start(ctx context.Context, url, userAgent string, gate *hostGate) {
+// start kicks off a fetch unless this session already recorded it, returning
+// whether a new download was queued. A recipe may be reused after a capture
+// retry: an ended browser context must not poison the new session's cache.
+func (c *PrefetchCache) start(ctx context.Context, url, userAgent string) bool {
 	c.mu.Lock()
-	if _, ok := c.entry[url]; ok {
+	if e, ok := c.entry[url]; ok && (e.ctx.Err() == nil || ctx.Err() != nil) {
 		c.mu.Unlock()
-		return
+		return false
 	}
-	e := &prefetchEntry{done: make(chan struct{})}
+	e := &prefetchEntry{ctx: ctx, done: make(chan struct{})}
 	c.entry[url] = e
 	c.mu.Unlock()
 
 	go func() {
 		defer close(e.done)
-		release, ok := gate.acquire(ctx, url)
+		release, ok := c.gate.acquire(ctx, url)
 		if !ok {
 			e.err = ctx.Err()
 			return
@@ -56,33 +59,21 @@ func (c *PrefetchCache) start(ctx context.Context, url, userAgent string, gate *
 		defer release()
 		e.dataURL, e.err = fetchAsDataURL(ctx, fetchClient, url, userAgent)
 	}()
+	return true
 }
 
-// take returns a prefetched result, waiting if the fetch is still in
-// flight. known is false when the URL was never prefetched (or its fetch
-// never got to run), which means "fetch it normally". A fetch that ran and
-// FAILED is known, with its error: the server already said no once, and
-// asking again a few seconds later sent two identical doomed requests per
-// URL — on a page of hotlink-protected images, double the 403s.
-func (c *PrefetchCache) take(ctx context.Context, url string) (dataURL string, known bool, err error) {
+// take waits for a queued result. Failures are cached too: a refused or
+// timed-out request must not be downloaded again during the same capture.
+func (c *PrefetchCache) take(ctx context.Context, url string) (string, error) {
 	c.mu.Lock()
-	e, ok := c.entry[url]
+	e := c.entry[url]
 	c.mu.Unlock()
-	if !ok {
-		return "", false, nil
-	}
 	select {
 	case <-e.done:
+		return e.dataURL, e.err
 	case <-ctx.Done():
-		return "", false, nil
+		return "", ctx.Err()
 	}
-	if e.err != nil {
-		if errors.Is(e.err, context.Canceled) || errors.Is(e.err, context.DeadlineExceeded) {
-			return "", false, nil // never really attempted
-		}
-		return "", true, e.err
-	}
-	return e.dataURL, true, nil
 }
 
 // PrefetchImages starts fetching every image URL the page references so
@@ -94,48 +85,58 @@ func PrefetchImages(cache *PrefetchCache) act.Func {
 		if err := act.Run(ctx, js.ExtractImageURLs.Action(&urls)); err != nil {
 			return nil // speculative: never fail the capture
 		}
-		gate := newHostGate(perHostLimit(), maxFetchConcurrency)
 		userAgent := fetchUserAgent(ctx)
 		for _, u := range urls {
-			cache.start(ctx, u, userAgent, gate)
+			cache.start(ctx, u, userAgent)
 		}
 		log.With("count", len(urls)).Debug("prefetching images")
 		return nil
 	}
 }
 
-// fetchAllCached is fetchAllAsDataURLs that first collects anything a
-// PrefetchCache already has (or has in flight), fetching only the rest.
+// PrefetchBackgrounds overlaps background downloads with layout and media
+// preparation. Images and backgrounds share a cache and concurrency limits.
+func PrefetchBackgrounds(cache *PrefetchCache) act.Func {
+	return func(ctx context.Context) error {
+		var urls []string
+		if err := js.ExtractBackgroundURLs.Action(&urls).Do(ctx); err != nil {
+			return err
+		}
+		userAgent := fetchUserAgent(ctx)
+		for _, u := range urls {
+			cache.start(ctx, u, userAgent)
+		}
+		return nil
+	}
+}
+
+// Enqueue every missing URL BEFORE collecting any result. A slow prefetched
+// image must never prevent a newly discovered image from starting.
 func fetchAllCached(ctx context.Context, cache *PrefetchCache, urls []string, what string) (map[string]string, int, int, int) {
+	return collectCached(ctx, cache, urls, what, fetchUserAgent(ctx))
+}
+
+func collectCached(ctx context.Context, cache *PrefetchCache, urls []string, what, userAgent string) (map[string]string, int, int, int) {
 	out := make(map[string]string, len(urls))
-	var missing []string
-	seen := map[string]bool{}
-	prefetched, failed := 0, 0
+	existing := map[string]bool{}
 	for _, u := range urls {
-		if seen[u] {
+		if _, seen := existing[u]; seen {
 			continue
 		}
-		seen[u] = true
-		dataURL, known, err := cache.take(ctx, u)
-		switch {
-		case !known:
-			missing = append(missing, u)
-		case err != nil:
+		existing[u] = !cache.start(ctx, u, userAgent)
+	}
+	prefetched, failed := 0, 0
+	for u, wasPrefetched := range existing {
+		data, err := cache.take(ctx, u)
+		if err != nil {
 			log.With("url", u).With("reason", err.Error()).Debug("failed to fetch " + what)
 			failed++
-		default:
-			out[u] = dataURL
+			continue
+		}
+		out[u] = data
+		if wasPrefetched {
 			prefetched++
 		}
 	}
-	fetched := prefetched
-	if len(missing) > 0 {
-		late, f, fail := fetchAllAsDataURLs(ctx, missing, what)
-		for k, v := range late {
-			out[k] = v
-		}
-		fetched += f
-		failed += fail
-	}
-	return out, fetched, failed, prefetched
+	return out, len(out), failed, prefetched
 }

@@ -6,9 +6,8 @@
 // iframes (handled by the freeze-iframes step), a same-process canvas
 // KEEPS its last frame once painted, so warming it once is enough.
 //
-// This sweeps the viewport down the page in viewport-height bands,
-// dwelling only in bands that contain a reachable canvas with no ink yet,
-// and leaving each band as soon as its canvases paint. Canvas-free pages
+// This visits only reachable canvases with no ink yet,
+// leaving each visited band as soon as its canvases paint. Canvas-free pages
 // pay almost nothing. Open shadow roots and same-origin iframes are
 // pierced. Params: bandMs (max dwell per band, default 1200), maxMs
 // (total budget, default 15000).
@@ -73,35 +72,32 @@ async function warmCanvases(bandMs, maxMs) {
     collect(document, canvases);
     if (canvases.length === 0) return stats;
 
-    const vh = window.innerHeight;
-    const pageH = Math.max(
-        document.documentElement.scrollHeight,
-        document.body ? document.body.scrollHeight : 0);
-
-    const inBand = (el, top, bottom) => {
-        if (!el.isConnected || !visible(el)) return false;
-        const y = absTop(el);
-        return y < bottom && (y + el.getBoundingClientRect().height) > top;
-    };
-
-    for (let y = 0; y < pageH && Date.now() < deadline; y += vh) {
+    // The lazy-loading scroll pass already visited the page. Here only
+    // canvases which still lack pixels need another rendering opportunity.
+    // Recompute positions after each dwell because lazy content can reflow.
+    const pending = new Set(canvases.filter((c) => visible(c) && !hasInk(c)));
+    while (pending.size && Date.now() < deadline) {
+        for (const c of pending) {
+            if (!c.isConnected || !visible(c) || hasInk(c)) pending.delete(c);
+        }
+        if (!pending.size) break;
+        const next = Array.from(pending).sort((a, b) => absTop(a) - absTop(b))[0];
+        window.scrollTo(0, Math.max(0, absTop(next) - window.innerHeight / 2));
         stats.bands++;
-        window.scrollTo(0, y);
-        // A beat for lazy loaders the scroll just triggered.
-        await sleep(120);
-
-        const blanks = canvases.filter((c) => inBand(c, y, y + vh) && !hasInk(c));
-        if (blanks.length === 0) continue;
-
-        stats.dwelled++;
-        const stop = Math.min(Date.now() + bandMs, deadline);
-        while (Date.now() < stop) {
-            await sleep(150);
-            if (blanks.every(hasInk)) break;
+        await sleep(120); // a rendering opportunity for scroll-triggered paint
+        const top = window.scrollY;
+        const bottom = top + window.innerHeight;
+        const blanks = Array.from(pending).filter((c) =>
+            c === next || (absTop(c) < bottom && absTop(c) + c.getBoundingClientRect().height > top));
+        if (!blanks.every(hasInk)) {
+            stats.dwelled++;
+            const stop = Math.min(Date.now() + bandMs, deadline);
+            while (Date.now() < stop && !blanks.every(hasInk)) await sleep(150);
         }
         for (const c of blanks) {
             if (hasInk(c)) stats.warmed++;
             else stats.stillBlank++;
+            pending.delete(c); // blank by design must not consume the whole budget
         }
     }
 

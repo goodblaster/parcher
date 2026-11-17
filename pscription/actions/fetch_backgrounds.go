@@ -16,6 +16,11 @@ import (
 
 // FetchAndInjectBackgrounds extracts background image URLs, fetches them server-side, and injects as data URIs
 func FetchAndInjectBackgrounds() act.Func {
+	return FetchAndInjectBackgroundsCached(nil)
+}
+
+// FetchAndInjectBackgroundsCached shares downloads with image preparation.
+func FetchAndInjectBackgroundsCached(cache *PrefetchCache) act.Func {
 	return func(ctx context.Context) error {
 		// Step 1: Extract all background image URLs from the page
 		var urls []string
@@ -32,7 +37,13 @@ func FetchAndInjectBackgrounds() act.Func {
 		log.With("count", len(urls)).Info("fetching background images")
 
 		// Step 2: Fetch all images (parallel, deduplicated) as data URLs
-		urlToDataURL, fetched, failed := fetchAllAsDataURLs(ctx, urls, "background image")
+		var urlToDataURL map[string]string
+		var fetched, failed int
+		if cache != nil {
+			urlToDataURL, fetched, failed, _ = fetchAllCached(ctx, cache, urls, "background image")
+		} else {
+			urlToDataURL, fetched, failed = fetchAllAsDataURLs(ctx, urls, "background image")
+		}
 
 		log.With("fetched", fetched).With("failed", failed).Info("fetched background images")
 
