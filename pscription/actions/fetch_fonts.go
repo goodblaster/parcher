@@ -50,9 +50,10 @@ func FetchAndInjectFonts() act.Func {
 		embedded, failed := 0, 0
 		userAgent := fetchUserAgent(ctx)
 
-		for _, face := range faces {
-			dataURL, format, ok := fetchFirstFont(ctx, fetchClient, face.URLs, userAgent)
-			if !ok {
+		results := downloadFonts(ctx, fetchClient, faces, userAgent)
+		for i, face := range faces {
+			dataURL, format := results[i].dataURL, results[i].format
+			if dataURL == "" {
 				failed++
 				continue
 			}
@@ -91,6 +92,34 @@ func FetchAndInjectFonts() act.Func {
 		// cascade over the original external @font-face rules.
 		return act.Run(ctx, js.InjectCss.Action(nil, "gb-embedded-fonts", css.String()))
 	}
+}
+
+type downloadedFont struct{ dataURL, format string }
+
+func downloadFonts(ctx context.Context, client *http.Client, faces []fontFace, userAgent string) []downloadedFont {
+	cache := newDownloadCache(func(ctx context.Context, url string) (downloadedFont, error) {
+		data, format, ok := fetchFirstFont(ctx, client, []string{url}, userAgent)
+		if !ok {
+			return downloadedFont{}, fmt.Errorf("font fetch failed: %s", url)
+		}
+		return downloadedFont{data, format}, nil
+	})
+	results := make([]downloadedFont, len(faces))
+	parallelEach(len(faces), func(i int) {
+		// Preserve each face's fallback preference, while independent faces
+		// download concurrently and shared URLs are downloaded only once.
+		for _, url := range faces[i].URLs {
+			if ctx.Err() != nil {
+				return
+			}
+			result, err := cache.get(ctx, url)
+			if err == nil {
+				results[i] = result
+				return
+			}
+		}
+	})
+	return results
 }
 
 // fetchFirstFont fetches the first URL that succeeds, returning its data URL

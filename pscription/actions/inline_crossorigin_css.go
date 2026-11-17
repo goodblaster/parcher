@@ -3,7 +3,6 @@ package actions
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	neturl "net/url"
 	"regexp"
@@ -55,11 +54,20 @@ func InlineCrossOriginStylesheets() act.Func {
 			return nil
 		}
 
-		client := &http.Client{Timeout: 15 * time.Second}
+		client := &http.Client{Timeout: 15 * time.Second, Transport: fetchTransport}
+		userAgent := fetchUserAgent(ctx)
+		downloads := newDownloadCache(func(ctx context.Context, href string) (string, error) {
+			return fetchStylesheet(ctx, client, href, userAgent)
+		})
+		results := make([]string, len(result.Hrefs))
+		failures := make([]error, len(result.Hrefs))
+		parallelEach(len(result.Hrefs), func(i int) {
+			results[i], failures[i] = downloads.get(ctx, result.Hrefs[i])
+		})
 		inlined, failed := 0, 0
 
-		for _, href := range result.Hrefs {
-			css, err := fetchStylesheet(ctx, client, href)
+		for i, href := range result.Hrefs {
+			css, err := results[i], failures[i]
 			if err != nil {
 				log.With("href", href).With("reason", err.Error()).Debug("could not fetch cross-origin stylesheet")
 				failed++
@@ -89,7 +97,7 @@ func InlineCrossOriginStylesheets() act.Func {
 // fetchStylesheet retrieves a stylesheet's text. Accept-Encoding is left
 // alone on purpose — setting it disables Go's transparent gzip handling and
 // the body comes back compressed.
-func fetchStylesheet(ctx context.Context, client *http.Client, href string) (string, error) {
+func fetchStylesheet(ctx context.Context, client *http.Client, href, userAgent string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, href, nil)
 	if err != nil {
 		return "", err
@@ -97,9 +105,7 @@ func fetchStylesheet(ctx context.Context, client *http.Client, href string) (str
 	// Google Fonts and friends serve different CSS per user agent (woff2 vs
 	// woff vs ttf), so ask as the browser that is rendering the page.
 	req.Header.Set("Accept", "text/css,*/*;q=0.1")
-	if ua, err := browserUserAgent(ctx); err == nil && ua != "" {
-		req.Header.Set("User-Agent", ua)
-	}
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -110,7 +116,7 @@ func fetchStylesheet(ctx context.Context, client *http.Client, href string) (str
 		return "", fmt.Errorf("http %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	body, err := readCapped(resp.Body, 8<<20)
 	if err != nil {
 		return "", err
 	}

@@ -112,11 +112,13 @@ func Staticize() Recipe {
 			// loaders, then wait until images actually complete.
 			stepIgnoreError("force-image-loading", actions.RunScriptIgnoreError(js.ForceImageLoading, nil)),
 			stepIgnoreError("prefetch-images", actions.PrefetchImages(prefetch)),
+			stepIgnoreError("prefetch-backgrounds", actions.PrefetchBackgrounds(prefetch)),
 			stepIgnoreError("scroll-and-wait-images", actions.RunScriptIgnoreError(js.ScrollAndWaitImages, nil)),
 			step("wait-network-idle", settle.WaitForNetworkIdleQuiet(5*time.Second, recheckQuiet)),
 			stepIgnoreError("force-image-loading", actions.RunScriptIgnoreError(js.ForceImageLoading, nil)),
 			step("wait-images", actions.WaitForImages(10*time.Second)),
 			stepIgnoreError("prefetch-images", actions.PrefetchImages(prefetch)),
+			stepIgnoreError("prefetch-backgrounds", actions.PrefetchBackgrounds(prefetch)),
 
 			// Let carousels/sliders/tab panels finish initializing before
 			// we freeze media and capture: until their JS runs, their slides
@@ -149,8 +151,9 @@ func Staticize() Recipe {
 			step("rasterize-canvases", actions.RasterizeCanvases()),
 			step("capture-video-frame", actions.CaptureVideoFrame()),
 			step("rasterize-font-icons", actions.RasterizeFontIcons()),
+			stepIgnoreError("prefetch-backgrounds", actions.PrefetchBackgrounds(prefetch)),
 			step("fetch-images", actions.FetchAndInjectImagesCached(prefetch)),
-			step("fetch-backgrounds", actions.FetchAndInjectBackgrounds()),
+			step("fetch-backgrounds", actions.FetchAndInjectBackgroundsCached(prefetch)),
 			// Note: web-font embedding is NOT here. Chrome's snapshot omits
 			// fonts, so the backends built on it (HTML, MHT) embed them
 			// themselves, at a point where they know they need them; a

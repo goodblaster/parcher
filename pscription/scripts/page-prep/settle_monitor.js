@@ -28,6 +28,20 @@
         count: 0,
     };
 
+    // Keep the same height sampling interval as the layout wait, but start
+    // recording now so already-stable layout does not buy a new window.
+    rec.sampleHeight = () => {
+        const now = performance.now();
+        const h = Math.max(document.documentElement ? document.documentElement.scrollHeight : 0,
+            document.body ? document.body.scrollHeight : 0);
+        if (h !== rec.height || now - rec.heightSample > 350) rec.heightSince = now;
+        rec.height = h;
+        rec.heightSample = now;
+    };
+    rec.sampleHeight();
+    const heightTimer = setInterval(rec.sampleHeight, 150);
+    window.addEventListener('pagehide', () => clearInterval(heightTimer), { once: true });
+
     // Non-enumerable so page code walking window doesn't trip over it.
     Object.defineProperty(window, '__gbSettle', {
         value: rec,

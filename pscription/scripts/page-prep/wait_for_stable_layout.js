@@ -20,23 +20,31 @@ async function waitForStableLayout(quietMs, maxMs) {
         document.documentElement.scrollHeight,
         document.body ? document.body.scrollHeight : 0);
 
+    const rec = window.__gbSettle;
+    const monitored = !!(rec && rec.sampleHeight);
     let last = height();
-    let stableSince = Date.now();
+    let stableSince = performance.now();
 
-    while (Date.now() - start < maxMs) {
-        await sleep(150);
-        const h = height();
-        if (h !== last) {
-            last = h;
-            stableSince = Date.now();
-        } else if (Date.now() - stableSince >= quietMs) {
-            break;
+    for (;;) {
+        if (monitored) {
+            rec.sampleHeight();
+            last = rec.height;
+            stableSince = rec.heightSince;
+        } else {
+            const h = height();
+            if (h !== last) {
+                last = h;
+                stableSince = performance.now();
+            }
         }
+        if (performance.now() - stableSince >= quietMs || Date.now() - start >= maxMs) break;
+        await sleep(150);
     }
 
     return {
         height: last,
         elapsed: Date.now() - start,
-        stable: Date.now() - stableSince >= quietMs,
+        stable: performance.now() - stableSince >= quietMs,
+        monitored,
     };
 }
