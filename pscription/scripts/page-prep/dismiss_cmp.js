@@ -7,6 +7,7 @@
 //
 // Returns { clicked: [names], removedIframes } for logging.
 (() => {
+    if (window.__pscriptionHasAccessGate?.()) return {};
     const clicked = [];
     let removedIframes = 0;
 
@@ -48,9 +49,12 @@
             if (btn && isVisible(btn)) {
                 btn.click();
                 clicked.push(name);
+                if (window.__pscriptionHasAccessGate?.()) return {clicked, removedIframes};
             }
         } catch (e) { /* selector engine hiccup; keep going */ }
     }
+
+    if (window.__pscriptionHasAccessGate?.()) return {clicked, removedIframes};
 
     // Usercentrics renders inside a shadow root.
     const uc = document.querySelector('#usercentrics-root');
@@ -61,6 +65,8 @@
             clicked.push('usercentrics');
         }
     }
+
+    if (window.__pscriptionHasAccessGate?.()) return {clicked, removedIframes};
 
     // Sourcepoint (and similar) serve the dialog from a cross-origin iframe
     // that page JS cannot reach into — remove the whole apparatus instead.

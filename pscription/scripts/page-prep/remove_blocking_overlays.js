@@ -21,6 +21,7 @@
 //
 // Returns { removed, unlocked, uninerted } for logging.
 (() => {
+    if (window.__pscriptionHasAccessGate?.()) return {};
     let removed = 0;
 
     const vw = window.innerWidth;

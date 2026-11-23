@@ -39,7 +39,7 @@ lint: vet ## vet + staticcheck + govulncheck (downloads the tools on first run)
 	go run $(GOVULNCHECK) ./...
 
 probe: ## Browser-driven probe suite: silent-loss checks on a local page (needs Chrome)
-	PARCH_BROWSER_TESTS=1 go test -count=1 -run Probe ./parchmint/capture/
+	PARCH_BROWSER_TESTS=1 go test -count=1 -run Probe ./parchmint/capture/ ./parchmint/cmd/parch/
 
 # Linux builds are pure Go (CGO off): OCR there is tesseract, run as a
 # program. macOS builds need cgo for Apple Vision, so they are only built

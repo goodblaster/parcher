@@ -16,7 +16,7 @@ import (
 	js "github.com/goodblaster/parcher/pscription/scripts"
 )
 
-// consentCookies are cookies that widely-deployed consent/age-gate plugins
+// consentCookies are cookies that widely-deployed cookie-consent plugins
 // read on first load. Seeding them before navigation means the dialog never
 // renders — the strongest dismissal technique available. Values mark the
 // banner as "already answered"; nothing here grants marketing consent
@@ -33,15 +33,9 @@ var consentCookies = map[string]string{
 	"cmplz_banner-status": "dismissed",
 	// EU cookie bar plugin family.
 	"cb-enabled": "accepted",
-	// WordPress "Age Gate" plugin stores the visitor's age.
-	"age_gate": "21",
-	// Common hand-rolled age checks.
-	"age_verified":  "1",
-	"ageVerified":   "true",
-	"age_confirmed": "1",
 }
 
-// PreseedConsentCookies sets well-known consent/age-gate cookies for the
+// PreseedConsentCookies sets well-known cookie-consent cookies for the
 // target URL's host before navigation. Pre-navigation action.
 func PreseedConsentCookies(target string) act.Func {
 	return func(ctx context.Context) error {
@@ -81,7 +75,8 @@ func PreseedConsentCookies(target string) act.Func {
 
 // PreseedConsentStorage registers a script that runs on every new document
 // BEFORE the page's own JavaScript, seeding localStorage flags that consent
-// and age-gate scripts check on startup. Pre-navigation action; survives
+// scripts check on startup. Eligibility assertions are never preseeded.
+// Pre-navigation action; survives
 // reloads and same-tab navigations.
 func PreseedConsentStorage() act.Func {
 	return func(ctx context.Context) error {

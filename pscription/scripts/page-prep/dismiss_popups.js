@@ -1,14 +1,14 @@
-// Actively dismisses dialogs that block page content: age gates, cookie
+// Actively dismisses non-access dialogs: cookie
 // consent banners, newsletter modals, and login nags.
 //
 // Rules of engagement:
 //   - Only VISIBLE controls are ever clicked.
-//   - Strongly-worded affirmatives ("enter site", "i am over 18",
-//     "accept all cookies") are clicked wherever they appear.
+//   - Cookie-consent affirmatives are clicked wherever they appear.
+//   - Capture installs an access-gate guard; a detected gate stops cleanup.
 //   - Generic words ("yes", "accept", "agree", "close", "×") are only
 //     clicked inside something that looks like an overlay/dialog, so we
 //     never press a "Yes" that belongs to the page itself.
-//   - After clicking, leftover gate/preloader wrappers are removed from the
+//   - After clicking, leftover preloader wrappers are removed from the
 //     DOM so they cannot appear in the capture.
 //
 //   - Native <dialog>s are closed only when MODAL (or named like an
@@ -18,6 +18,7 @@
 //
 // Returns { clicked, removed, closedDialogs, closedPopovers } for logging.
 (() => {
+    if (window.__pscriptionHasAccessGate?.()) return {};
     const MAX_CLICKS = 6;
     let clicked = 0;
     let removed = 0;
@@ -73,9 +74,6 @@
     // Clicked anywhere when visible: these phrases only ever mean "get this
     // dialog out of my way".
     const strongAffirmatives = new Set([
-        'enter site', 'enter the site', 'i am over 18', "i'm over 18",
-        'i am over 21', "i'm over 21", 'i am 18 or older', 'i am 21 or older',
-        'yes, i am over 18', 'yes, i am over 21', 'yes, i am of legal age',
         'accept all cookies', 'accept all', 'allow all', 'allow all cookies',
         'accept cookies', 'i accept cookies', 'agree and continue',
         'accept and continue', 'agree & continue',
@@ -104,12 +102,10 @@
         const aria = norm(el.getAttribute('aria-label'));
         if (text.length > 60) continue; // real buttons are short
 
-        const isAgeGateButton = /age.?gate/i.test(cls(el)) &&
-            /yes|submit|enter|confirm/i.test(cls(el) + ' ' + text);
-
-        if (strongAffirmatives.has(text) || isAgeGateButton) {
+        if (strongAffirmatives.has(text)) {
             el.click();
             clicked++;
+            if (window.__pscriptionHasAccessGate?.()) return {clicked, removed, closedDialogs};
             continue;
         }
 
@@ -120,8 +116,11 @@
             aria.includes('close') || aria.includes('dismiss')) {
             el.click();
             clicked++;
+            if (window.__pscriptionHasAccessGate?.()) return {clicked, removed, closedDialogs};
         }
     }
+
+    if (window.__pscriptionHasAccessGate?.()) return {clicked, removed, closedDialogs};
 
     // Native <dialog> elements: modal ones block the page by definition;
     // a non-modal one is closed only if it names itself as overlay chrome.
@@ -136,6 +135,7 @@
             dialog.removeAttribute('open');
         }
         closedDialogs++;
+        if (window.__pscriptionHasAccessGate?.()) return {clicked, removed, closedDialogs};
     }
 
     // Popovers sit in the top layer above everything, like a modal dialog.
@@ -155,16 +155,13 @@
         } catch (e) { /* not hideable */ }
     }
 
-    // Remove gate/preloader remnants outright. By the time this script runs
-    // (and it runs several times), any gate that wanted clicking has been
-    // clicked; whatever is left of it would only pollute the capture.
+    // Remove preloader remnants. Access-gate wrappers are kept intact.
     //
-    // Guards: sites put state classes like "age-gate-open" on <body> or a
+    // Guards: sites put preloader state classes on <body> or a
     // page wrapper — matching by class alone must never delete the page.
     // Structural elements (html/body or anything with a large subtree) get
     // the matching classes stripped instead of being removed.
     const remnants = document.querySelectorAll(
-        '[class*="age-gate" i], [id*="age-gate" i], [class*="age_gate" i], ' +
         '#preloader, .preloader, .page-preloader, .page-loader, ' +
         '[id*="page-preloader" i], .loading-overlay, .loader-overlay');
     for (const el of remnants) {
@@ -173,7 +170,7 @@
             el.querySelectorAll('*').length > 200;
         if (structural) {
             for (const c of Array.from(el.classList)) {
-                if (/age.?gate|preloader|page-loader|loading-overlay|loader-overlay/i.test(c)) {
+                if (/preloader|page-loader|loading-overlay|loader-overlay/i.test(c)) {
                     el.classList.remove(c);
                 }
             }

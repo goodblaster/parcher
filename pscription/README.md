@@ -5,7 +5,7 @@ list of preparation steps and scripts — against a URL in a headless
 browser, like a doctor's ℞ (Latin *recipe*: "take thou").
 
 The built-in `staticize` pscription turns a live page into something a
-capture backend can serialize faithfully: dialogs and age gates dismissed,
+capture backend can serialize faithfully: ordinary popups dismissed, access gates preserved for an explicit decision,
 lazy content loaded, videos/canvases/cross-origin iframes frozen to
 stills, every resource embedded as a data URI.
 [parchmint](../parchmint)'s `parch` is that pscription fused to a
@@ -75,7 +75,11 @@ scripts/extraction. Serialization to archive formats lives in
 - `actions/` — composable building blocks
 - `scripts/` — embedded page-context JavaScript ([SCRIPTS.md](SCRIPTS.md))
 
-Dialog clearing is layered, strongest first: consent/age-gate state is
+Dialog clearing is layered, strongest first: cookie-banner state is
 pre-seeded before navigation (cookies + localStorage), known consent
 platforms are dismissed by exact selector, text heuristics handle the rest,
 and a geometry-based demolition pass runs just before capture.
+
+Age eligibility is never preseeded. `actions.GateController` lets capture stop
+preparation at an access decision, preserve its evidence, or interact with an
+explicitly approved gate. See [the capture contract](../parchmint/ACCESS-GATES.md).

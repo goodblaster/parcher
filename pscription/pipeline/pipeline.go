@@ -63,8 +63,20 @@ func (r Recipe) Append(steps ...Step) Recipe {
 // Action returns the whole recipe as a single chromedp action, so a recipe
 // can run anywhere an action can (runner.Run, another recipe, ...).
 func (r Recipe) Action() act.Func {
+	return r.ActionWithGuard(nil)
+}
+
+// ActionWithGuard checks before every step and after the last step. A false
+// result stops preparation successfully, leaving the current page intact for
+// serialization. Guard errors are never swallowed by ContinueOnError.
+func (r Recipe) ActionWithGuard(guard func(context.Context) (bool, error)) act.Func {
 	return func(ctx context.Context) error {
 		for _, step := range r.Steps {
+			if guard != nil {
+				if proceed, err := guard(ctx); err != nil || !proceed {
+					return err
+				}
+			}
 			start := time.Now()
 			err := step.Action.Do(ctx)
 			logger := log.With("recipe", r.Name).With("step", step.Name).With("duration", time.Since(start).Round(time.Millisecond).String())
@@ -77,6 +89,10 @@ func (r Recipe) Action() act.Func {
 				continue
 			}
 			logger.Debug("step done")
+		}
+		if guard != nil {
+			_, err := guard(ctx)
+			return err
 		}
 		return nil
 	}
