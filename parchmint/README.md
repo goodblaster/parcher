@@ -1,7 +1,7 @@
 # parchmint
 
 **parch** — page archiver. Captures a URL as a single self-contained file
-that renders faithfully with no network: dialogs and age gates dismissed,
+that renders faithfully with no network: ordinary popups dismissed, access gates preserved for an explicit decision,
 lazy content loaded, videos/canvases/cross-origin iframes frozen to
 stills, every resource embedded.
 
@@ -77,6 +77,13 @@ HTML captures warn when snapshot resources cannot be embedded. Use
 This checks unresolved snapshot references; it does not certify visual fidelity
 or detect content the page never loaded. `--strict` applies to HTML capture only.
 
+Access gates are [scriptable capture outcomes](ACCESS-GATES.md): an unresolved
+capture writes `page.gated.html` and `page.json`, then exits **3**.
+`parch --clear page.json` uses the saved decisions and writes
+`page.html` after clearance. `--auto-clear` approves supported gates in one run;
+`--report` optionally writes a capture report independently of the automatic
+gate file.
+
 More runnable demos in [examples/](examples) — each is a `run.sh` that
 builds parch and narrates what it does.
 
@@ -106,7 +113,8 @@ archive itself is never altered: it stays the page as it was.
 Flags mean the same thing on every command (`-o` output, `-f` format, `-v`
 verbose, `-h` help; `--width`/`--height`/`--dpr`/`--paper`; `--timeout`;
 `--mark-color`/`--mark-style`; `--hidden`), and exit status is 0 / 1 failed
-or no match / 2 bad invocation.
+or no match / 2 bad invocation. Capture additionally exits 3 when an archive
+was saved with an unresolved access gate.
 
 Built on [pscription](../pscription), which does the
 browser driving and page preparation; the capture backends (HTML, MHT, PDF,

@@ -35,6 +35,7 @@ import (
 	"github.com/goodblaster/parcher/parchmint/capture"
 	"github.com/goodblaster/parcher/parchmint/internal/config"
 	"github.com/goodblaster/parcher/parchmint/textlayer"
+	"github.com/goodblaster/parcher/pscription/actions"
 	"github.com/goodblaster/parcher/pscription/pipeline"
 	"github.com/goodblaster/parcher/pscription/pscription"
 	"github.com/goodblaster/parcher/pscription/runner"
@@ -85,26 +86,32 @@ func main() {
 	}
 
 	var (
-		output    string
-		format    string
-		links     string
-		rxFile    string
-		profile   string
-		cache     string
-		userAgent string
-		headful   bool
-		timeout   int
-		noText    bool
-		noFavicon bool
-		text      bool
-		favicon   bool
-		verbose   bool
-		strict    bool
-		highlight stringsFlag
+		output       string
+		format       string
+		links        string
+		rxFile       string
+		profile      string
+		cache        string
+		userAgent    string
+		headful      bool
+		timeout      int
+		noText       bool
+		noFavicon    bool
+		text         bool
+		favicon      bool
+		verbose      bool
+		strict       bool
+		gateMode     string
+		autoClear    bool
+		clearFile    string
+		reportPath   string
+		approveGates stringsFlag
+		highlight    stringsFlag
 	)
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <url|file>          capture a page as one file\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "       %s --clear <file.json> [options]   clear a recorded gate\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "       %s <command> [options] <args>   work with captured archives\n", os.Args[0])
 		fmt.Fprintln(os.Stderr, "\nCommands:")
 		fmt.Fprintln(os.Stderr, "  text     plain text back out of an archive (--json: the raw layer; --blocks: NDJSON)")
@@ -143,13 +150,53 @@ func main() {
 	match := registerMatchFlags(flag.CommandLine)
 	flag.BoolVarP(&verbose, "verbose", "v", false, "debug logging")
 	flag.BoolVar(&strict, "strict", false, "fail HTML capture if snapshot resource references cannot be embedded")
+	flag.StringVar(&gateMode, "gates", "detect", "access gates: detect (save unresolved view and exit 3) or preserve (save it and exit 0)")
+	flag.Var(&approveGates, "approve-gate", "approve the exact gate fingerprint from a report (repeatable; asserts all displayed declarations)")
+	flag.BoolVar(&autoClear, "auto-clear", false, "automatically approve supported access gates (asserts their declarations); save cleared captures with the regular filename")
+	flag.StringVar(&clearFile, "clear", "", "clear gates recorded in this capture metadata JSON file; URL, format and regular output name come from the file")
+	flag.StringVar(&reportPath, "report", "", "write a versioned JSON capture report to this file (separate from the archive)")
 	flag.Parse()
 
-	if flag.NArg() != 1 {
+	if (clearFile == "" && flag.NArg() != 1) || (clearFile != "" && flag.NArg() > 1) {
 		flag.Usage()
 		os.Exit(2)
 	}
-	url := targetURL(flag.Arg(0))
+	var savedGate *captureMetadata
+	var url string
+	if clearFile != "" {
+		if autoClear || len(approveGates) > 0 || gateMode == "preserve" {
+			usageErr(fmt.Errorf("--clear cannot be combined with --auto-clear, --approve-gate, or --gates=preserve"))
+		}
+		var err error
+		savedGate, err = readClearMetadata(clearFile)
+		if err != nil {
+			usageErr(err)
+		}
+		url = savedGate.URL
+		if flag.NArg() == 1 && targetURL(flag.Arg(0)) != url {
+			usageErr(fmt.Errorf("URL does not match --clear metadata file"))
+		}
+		for _, gate := range savedGate.Access.Pending {
+			approveGates = append(approveGates, gate.ID)
+		}
+	} else {
+		url = targetURL(flag.Arg(0))
+	}
+	if gateMode != "detect" && gateMode != "preserve" {
+		usageErr(fmt.Errorf("invalid --gates %q (want detect or preserve)", gateMode))
+	}
+	gatePolicy := actions.GatePolicy{Preserve: gateMode == "preserve", AutoClear: autoClear, Approvals: approveGates}
+	if err := gatePolicy.Validate(); err != nil {
+		usageErr(err)
+	}
+	if reportPath == "-" {
+		usageErr(fmt.Errorf("--report requires a file path; stdout is reserved for the archive"))
+	}
+	if reportPath != "" && output != "" && output != "-" {
+		if err := separateReportPath(reportPath, output); err != nil {
+			usageErr(err)
+		}
+	}
 
 	// Logs go to stderr so captured content can be piped from stdout.
 	level := logos.LevelInfo
@@ -166,6 +213,10 @@ func main() {
 		fail(fmt.Errorf("failed to read config: %w", err))
 	}
 	set := explicitFlags()
+	if savedGate != nil && !set["format"] {
+		format = savedGate.Format
+		set["format"] = true
+	}
 	for _, path := range loaded {
 		logger.With("config", path).Debug("loaded config")
 	}
@@ -218,6 +269,22 @@ func main() {
 	backend := backendFor(format)
 	if backend == nil {
 		usageErr(fmt.Errorf("unknown format %q (want %s)", format, formatList()))
+	}
+	if savedGate != nil && !set["output"] {
+		output = savedGate.destination(clearFile, backend.Ext(), flag.CommandLine.Changed("format"))
+		set["output"] = true
+	}
+	if savedGate != nil {
+		if output != "-" {
+			if err := separateReportPath(clearFile, output); err != nil {
+				usageErr(fmt.Errorf("--output would overwrite the --clear metadata file: %w", err))
+			}
+		}
+		if reportPath != "" {
+			if err := separateReportPath(clearFile, reportPath); err != nil {
+				usageErr(fmt.Errorf("--report would overwrite the --clear metadata file: %w", err))
+			}
+		}
 	}
 	if strict {
 		html, ok := backend.(capture.HTML)
@@ -290,6 +357,7 @@ func main() {
 	start := time.Now()
 
 	opts := capture.Options{
+		Gates: gatePolicy,
 		// Only a document container can carry these; the backend answers for
 		// itself, so a new or compiled-out backend needs no edit here.
 		TextLayer:     text && capture.CarriesLayer(backend),
@@ -308,24 +376,75 @@ func main() {
 
 	// Decide the destination now that we have the title (needed by {title}).
 	dest, toStdout := resolveDest(set["output"], output, cfg, url, snap.Title, backend.Ext(), start)
-
-	if toStdout {
-		if _, err := os.Stdout.Write(snap.Bytes); err != nil {
-			fail(fmt.Errorf("failed to write to stdout: %w", err))
+	normalDest := dest
+	pending := snap.Access != nil && len(snap.Access.Pending) > 0
+	gatePath := ""
+	if !toStdout {
+		if info, err := os.Stat(dest); err == nil && info.IsDir() {
+			fail(fmt.Errorf("output %q is a directory", dest))
 		}
-	} else {
-		if dir := filepath.Dir(dest); dir != "." {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				fail(fmt.Errorf("failed to create output dir: %w", err))
+	}
+	if pending {
+		// Stdout has no discoverable filename (shell redirection is outside
+		// this process). Keep streaming, and also save the required artifact
+		// pair under the URL-derived name in the working directory.
+		if toStdout {
+			normalDest = deriveFilename(url) + backend.Ext()
+		}
+		normalDest = plainFilename(normalDest)
+		dest = gatedFilename(normalDest)
+		gatePath = metadataFilename(dest)
+		if err := separateReportPath(gatePath, normalDest); err != nil {
+			usageErr(err)
+		}
+		if err := separateReportPath(dest, normalDest); err != nil {
+			usageErr(err)
+		}
+		if err := separateReportPath(gatePath, dest); err != nil {
+			usageErr(err)
+		}
+	}
+	if reportPath != "" && (!toStdout || pending) {
+		if err := separateReportPath(reportPath, dest); err != nil {
+			usageErr(err)
+		}
+		if gatePath != "" {
+			if err := separateReportPath(reportPath, gatePath); err != nil {
+				usageErr(err)
 			}
 		}
+	}
+	if !toStdout || pending {
+		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+			fail(fmt.Errorf("create output directory: %w", err))
+		}
 		if err := os.WriteFile(dest, snap.Bytes, 0644); err != nil {
-			fail(fmt.Errorf("failed to write output: %w", err))
+			fail(fmt.Errorf("write output: %w", err))
+		}
+	}
+	if pending {
+		if err := writeCaptureJSON(gatePath, newCaptureMetadata(snap, normalDest, backend.Name())); err != nil {
+			fail(fmt.Errorf("write metadata file: %w", err))
+		}
+		logger.With("metadata", gatePath).Info("saved access decisions for --clear")
+	}
+	if toStdout {
+		if _, err := os.Stdout.Write(snap.Bytes); err != nil {
+			fail(fmt.Errorf("write stdout: %w", err))
+		}
+	}
+	if reportPath != "" {
+		reportOutput := dest
+		if toStdout && !pending {
+			reportOutput = "-"
+		}
+		if err := writeCaptureJSON(reportPath, snap.Report(reportOutput)); err != nil {
+			fail(fmt.Errorf("write capture report: %w", err))
 		}
 	}
 
 	out := dest
-	if toStdout {
+	if toStdout && !pending {
 		out = "(stdout)"
 	}
 	logger.With("output", out).
@@ -333,6 +452,43 @@ func main() {
 		With("bytes", len(snap.Bytes)).
 		With("duration", time.Since(start).Round(time.Second).String()).
 		Info("archived")
+	if snap.Access != nil && len(snap.Access.Pending) > 0 {
+		for _, gate := range snap.Access.Pending {
+			logger.With("gate", gate.ID).With("kind", gate.Kind).With("reason", gate.Reason).
+				Warn("access gate preserved; rerun with --clear and the matching metadata JSON file")
+		}
+		if snap.Access.Status == "decision_required" {
+			os.Exit(3)
+		}
+	}
+}
+
+// Refuse lexical aliases, symlinks and hard links that would overwrite the
+// archive with its report after a successful capture.
+func separateReportPath(report, output string) error {
+	r, err := filepath.Abs(report)
+	if err != nil {
+		return err
+	}
+	o, err := filepath.Abs(output)
+	if err != nil {
+		return err
+	}
+	if r == o {
+		return fmt.Errorf("--report and --output must name different files")
+	}
+	ri, re := os.Stat(r)
+	oi, oe := os.Stat(o)
+	if re == nil && oe == nil && os.SameFile(ri, oi) {
+		return fmt.Errorf("--report and --output refer to the same file")
+	}
+	// Resolve existing parent symlinks even when the leaf does not yet exist.
+	rd, re := filepath.EvalSymlinks(filepath.Dir(r))
+	od, oe := filepath.EvalSymlinks(filepath.Dir(o))
+	if re == nil && oe == nil && filepath.Join(rd, filepath.Base(r)) == filepath.Join(od, filepath.Base(o)) {
+		return fmt.Errorf("--report and --output refer to the same path")
+	}
+	return nil
 }
 
 // runHelpCommand implements `parch help [cmd]`: the subcommand's own

@@ -77,8 +77,10 @@ for url in "${urls[@]}"; do
   slug=$(printf '%s' "$url" | sed -e 's|https\{0,1\}://||' -e 's|[^A-Za-z0-9._-]|_|g' | cut -c1-60)
   archive="$OUTDIR/$slug.html"
 
-  "$PARCH" -f html -o "$archive" "$url" >"$OUTDIR/$slug.log" 2>&1
-  if [ ! -s "$archive" ]; then
+  "$PARCH" -f html --report "$OUTDIR/$slug.report.json" -o "$archive" "$url" >"$OUTDIR/$slug.log" 2>&1
+  capture_status=$?
+  if [ "$capture_status" -eq 3 ]; then archive="$OUTDIR/$slug.gated.html"; fi
+  if { [ "$capture_status" -ne 0 ] && [ "$capture_status" -ne 3 ]; } || [ ! -s "$archive" ]; then
     printf '%-46s %10s %9s %9s %6s %8s  %s\n' "$slug" FAILED - - - - "see $OUTDIR/$slug.log"
     status=1
     continue
@@ -88,7 +90,7 @@ for url in "${urls[@]}"; do
 
   bytes=$(stat -f%z "$archive")
   # A reference still pointing at the network is a resource the archive does
-  # not carry. Scripts should be the embedded text layer and ld+json only.
+  # not carry. Scripts should be inert text/capture metadata and ld+json only.
   #
   # Two counts, because they mean different things:
   #
@@ -124,9 +126,14 @@ EOF2
   # pixels, a CDN script tag, media the page never actually loaded. What
   # matters is the TREND — a page that used to archive at 0 and now sits at
   # 40 has lost something. Only a capture that produced nothing is an error,
-  # so this stays usable as a gate without crying wolf.
+  # so this stays usable as a check without crying wolf. Exit 3 separately
+  # signals a saved unresolved access decision; exit 1 is an operation failure.
   result=ok
-  if [ "$refs" -ne 0 ]; then result="$refs external ref(s) — check they are junk"; fi
+  if [ "$capture_status" -eq 3 ]; then
+    result="decision required — see $OUTDIR/$slug.json"
+    if [ "$status" -eq 0 ]; then status=3; fi
+  fi
+  if [ "$refs" -ne 0 ]; then result="$result; $refs external ref(s) — check they are junk"; fi
   if [ "$rel" -ne 0 ]; then result="$result; $rel relative ref(s) unresolved"; fi
   if [ ! -s "$archive.png" ]; then result="$result (no screenshot)"; fi
 

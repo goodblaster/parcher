@@ -18,7 +18,7 @@ import (
 //
 // Ordering constraints baked into this recipe:
 //   - hide-overlays runs first so popup chrome never flashes into view.
-//   - dismiss-popups runs several times: age gates need a click, then time
+//   - dismiss-popups runs several times: cookie popups need a click, then time
 //     for the site's reaction, then another sweep for late popups.
 //   - capture-video-frame and rasterize-font-icons run BEFORE the embed
 //     steps, because the <img> elements they create (posters, YouTube
@@ -65,7 +65,7 @@ func Staticize() Recipe {
 	return Recipe{
 		Name: "staticize",
 
-		// Layer 0 of dialog clearing: seed consent/age-gate state before
+		// Layer 0 of dialog clearing: seed cookie-consent state before
 		// the page loads, so most banners decide they were already
 		// answered and never render.
 		PreNavigate: []PreNavFunc{
@@ -90,7 +90,7 @@ func Staticize() Recipe {
 			stepIgnoreError("wait-quiet", actions.RunScriptIgnoreError(js.WaitForQuiet, nil, 500, 3000)),
 
 			// Dialog clearing, strongest first: exact selectors for known
-			// consent platforms, then text heuristics. Age gates / cookie
+			// consent platforms, then text heuristics. Cookie
 			// walls often need a click, a pause for the site's reaction —
 			// which may be a full page reload — and another sweep.
 			// wait-ready absorbs any navigation the click triggered; a
@@ -214,6 +214,13 @@ func stepIgnoreError(name string, action act.Func) Step {
 
 func pressEscape() act.Func {
 	return func(ctx context.Context) error {
+		var blocked bool
+		if err := act.Evaluate("Boolean(window.__pscriptionHasAccessGate?.())", &blocked)(ctx); err != nil {
+			return err
+		}
+		if blocked {
+			return nil
+		}
 		return chromedp.Do(ctx, chromedp.KeyEvent(fmt.Sprintf("%c", rune(27))))
 	}
 }
@@ -221,6 +228,10 @@ func pressEscape() act.Func {
 // The primitive steps register under their names with default parameters,
 // so a future data-defined recipe can reference them directly.
 func init() {
+	Register("detect-access-gates", func() Step {
+		var gates []actions.AccessGate
+		return step("detect-access-gates", actions.DetectAccessGates(&gates))
+	})
 	Register("hide-overlays", func() Step {
 		return stepIgnoreError("hide-overlays", actions.RunScriptIgnoreError(js.HideOverlays, nil))
 	})

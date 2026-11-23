@@ -10,6 +10,7 @@ var Files embed.FS
 
 // Page preparation scripts
 const (
+	AccessGates            ScriptFile = "page-prep/access_gates.js"
 	ScrollAndWaitImages    ScriptFile = "page-prep/scroll_and_wait_images.js"
 	ForceImageLoading      ScriptFile = "page-prep/force_image_loading.js"
 	PreseedConsent         ScriptFile = "page-prep/preseed_consent.js"

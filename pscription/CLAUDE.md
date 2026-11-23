@@ -40,7 +40,7 @@ Flow: **runner** (browser session) → **pipeline** (preparation recipe) → scr
 
 ## Dialog clearing is layered — keep this order when tuning
 
-0. **Prevent** (pre-navigation): `actions.PreseedConsentCookies` + `PreseedConsentStorage` (localStorage via `Page.addScriptToEvaluateOnNewDocument`, runs before page JS, survives reloads). Most banners/age gates never render.
+0. **Prevent** (pre-navigation): `actions.PreseedConsentCookies` + `PreseedConsentStorage` (localStorage via `Page.addScriptToEvaluateOnNewDocument`, runs before page JS, survives reloads). Many cookie banners never render. Never preseed age/eligibility state.
 1. **Known CMPs by exact selector**: `dismiss_cmp.js` (~20 platforms incl. Usercentrics shadow DOM; Sourcepoint's cross-origin iframe is removed, not clicked).
 2. **Heuristics**: `dismiss_popups.js` — visible-only clicks, overlay-scoped generic words.
 3. **Demolition** at capture time: `remove_blocking_overlays.js` — geometry-based, with text-share guards so fixed heroes survive.
@@ -97,3 +97,12 @@ Prep changes are exercised end-to-end through parchmint: build `parch` from this
 ## Known cleanup remaining
 
 - `actions/` could consolidate ~19 small files into ~6 thematic ones.
+
+Access gates: `actions.GateController` attaches a detector before navigation and
+guards capture prep between steps. Pending decisions stop prep successfully so
+the gate can be archived. Destructive JS also checks the detector within click
+loops. Never add age-cookie seeds or implicit eligibility clicks. Explicit AutoClear
+authorizes supported gates through the same fingerprint and verification path,
+with a bounded number of attempts. Approval tokens
+cover displayed declarations, links and actions; verify disappearance rather
+than mistaking a disabled/loading button for success.

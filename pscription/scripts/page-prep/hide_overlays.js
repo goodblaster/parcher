@@ -4,8 +4,8 @@
 // hides stays hidden offline.
 //
 // Deliberately NOT hidden here: age gates and cookie walls. Those often
-// gate the real content behind them and must be clicked through instead
-// (see dismiss_popups.js).
+// gate the real content behind them. Capture preserves access decisions
+// until explicitly approved; cookie popups retain their existing cleanup.
 //
 // SELECTOR RULE: scoped, never substring-matched on a short prefix. "om-" is
 // two characters and belongs to nobody: [class*="om-element" i] also matches
@@ -25,6 +25,7 @@
 // because this step is stepIgnoreError, that failure is logged and swallowed,
 // so the page silently gets NO overlay hiding at all.
 (() => {
+    if (window.__pscriptionHasAccessGate?.()) return {};
     if (document.getElementById('gb-hide-overlays')) {
         return { injected: false };
     }

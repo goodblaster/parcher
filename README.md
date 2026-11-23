@@ -26,7 +26,7 @@ make test     # every test
 make help     # the rest
 ```
 
-**parch** turns a live page into a file: dialogs and age gates dismissed,
+**parch** turns a live page into a file: ordinary popups dismissed, access gates preserved for an explicit decision,
 lazy content loaded, videos/canvases/cross-origin iframes frozen to stills,
 every resource embedded. **pscribe** is the preparation half on its own,
 driving a page and returning what your scripts extracted.

@@ -16,6 +16,7 @@ import (
 	"github.com/goodblaster/parcher/parchmint/internal/log"
 	"github.com/goodblaster/parcher/parchmint/textlayer"
 	"github.com/goodblaster/parcher/pscription/act"
+	"github.com/goodblaster/parcher/pscription/actions"
 	"github.com/goodblaster/parcher/pscription/pipeline"
 	"github.com/goodblaster/parcher/pscription/runner"
 	js "github.com/goodblaster/parcher/pscription/scripts"
@@ -28,10 +29,12 @@ const maxCaptureAttempts = 3
 
 // Snapshot is the result of capturing a page.
 type Snapshot struct {
-	URL   string
-	Title string
-	MIME  string
-	Bytes []byte
+	URL      string
+	Title    string
+	MIME     string
+	Bytes    []byte
+	FinalURL string
+	Access   *actions.AccessReport
 
 	// ViewportWidth is the CSS-pixel layout width the page was rendered
 	// at, from the session config. Backends that need the page's width
@@ -74,6 +77,10 @@ type Snapshot struct {
 
 // Options control capture extras beyond the recipe and backend.
 type Options struct {
+	// Gates controls preservation and explicit approval of detected access
+	// decisions. The zero value captures an unresolved view without answering.
+	Gates actions.GatePolicy
+
 	// TextLayer extracts the text layer (TEXTLAYER.md) from the prepared
 	// page into Snapshot.TextLayer, for backends that can embed it.
 	TextLayer bool
@@ -137,6 +144,9 @@ func CaptureWithConfig(ctx context.Context, url string, cfg runner.Config, recip
 // whole capture is retried in a fresh session, since the failure is
 // intermittent.
 func CaptureWithOptions(ctx context.Context, url string, cfg runner.Config, recipe pipeline.Recipe, backend Backend, opts Options) (*Snapshot, error) {
+	if err := opts.Gates.Validate(); err != nil {
+		return nil, err
+	}
 	cfg.PreNavigate = append(cfg.PreNavigate, recipe.PreNavigateActions(url)...)
 
 	// Retrying is only justified while the evidence keeps changing. The
@@ -167,6 +177,8 @@ func CaptureWithOptions(ctx context.Context, url string, cfg runner.Config, reci
 // the evidence matches prevSig, the previous attempt's, in which case the
 // defect is not transient and this session is serialized as-is.
 func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipeline.Recipe, backend Backend, opts Options, retryable bool, prevSig string) (snap *Snapshot, signature string, defect bool, err error) {
+	gates := actions.NewGateController(opts.Gates)
+	cfg.PreNavigate = append(append([]act.Action{}, cfg.PreNavigate...), gates.Attach())
 	session, err := runner.Start(ctx, url, cfg)
 	if err != nil {
 		return nil, signature, false, err
@@ -180,11 +192,12 @@ func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipe
 		PaperWidthIn:     opts.PaperWidthIn,
 		PaperHeightIn:    opts.PaperHeightIn,
 	}
-	if err := session.Run(recipe.Action(), captureTitle(&snap.Title)); err != nil {
+	snap.Access = &gates.Report
+	if err := session.Run(recipe.ActionWithGuard(gates.Check), captureTitle(&snap.Title)); err != nil {
 		return nil, signature, false, err
 	}
 
-	if retryable {
+	if retryable && gates.Report.Status == "no_gate_detected" {
 		_ = session.Run(detectDefect(&defect, &signature))
 		if defect {
 			// Cheap in-session recovery before escalating to a full
@@ -219,6 +232,20 @@ func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipe
 			}
 			return nil
 		})
+	}
+	// The last approval opportunity must precede text extraction: approval can
+	// navigate, and a new page must never receive the previous page's text layer.
+	if err := session.Run(func(ctx context.Context) error {
+		_, err := gates.Check(ctx)
+		return err
+	}, captureTitle(&snap.Title)); err != nil {
+		return nil, signature, false, err
+	}
+	if len(gates.Report.Pending) > 0 {
+		// Capture runtime form/shadow state without removing or answering the gate.
+		if err := session.Run(js.MaterializeFormState.Action(nil), js.FlattenAdoptedStylesheets.Action(nil), js.LinkShadowStyles.Action(nil)); err != nil {
+			return nil, signature, false, err
+		}
 	}
 
 	// Text layer and capture-time highlighting, on the prepared page
@@ -256,7 +283,10 @@ func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipe
 		})
 	}
 
-	if err := session.Run(backend.Action(snap)); err != nil {
+	if err := session.Run(captureTitle(&snap.Title), act.Evaluate("location.href", &snap.FinalURL), backend.Action(snap)); err != nil {
+		return nil, signature, false, err
+	}
+	if err := embedCaptureReport(snap); err != nil {
 		return nil, signature, false, err
 	}
 	return snap, signature, false, nil

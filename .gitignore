@@ -19,6 +19,8 @@
 /*.jpeg
 /*.jpg
 /*.webp
+# Capture metadata can contain page text and real URLs.
+/*.json
 
 # Real hosts behind the test-site-N labels — the mapping never ships
 .sites.env
