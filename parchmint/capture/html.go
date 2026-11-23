@@ -76,6 +76,9 @@ func (backend HTML) Action(snap *Snapshot) act.Func {
 		// trade the attribute for a data- one first. Runs for archives too
 		// (a conversion re-snapshots, and would lose them just the same).
 		_ = pipeline.PreserveHiddenStep().Action(ctx)
+		if err := pipeline.MaterializeImageSourcesStep().Action(ctx); err != nil {
+			return err
+		}
 
 		var content string
 		if err := actions.SaveMhtToString(&content)(ctx); err != nil {

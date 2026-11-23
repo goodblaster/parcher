@@ -22,6 +22,7 @@ import (
 	"github.com/goodblaster/go-mht/pkg/sections"
 	"github.com/goodblaster/parcher/parchmint/internal/convert/css"
 	"github.com/goodblaster/parcher/parchmint/internal/convert/refs"
+	"github.com/goodblaster/parcher/parchmint/internal/imagearchive"
 	"golang.org/x/net/html"
 )
 
@@ -144,7 +145,7 @@ func (r *renderer) html(section *sections.Section) ([]byte, error) {
 			if err := tokenizer.Err(); !errors.Is(err, io.EOF) {
 				return nil, errors.Wrap(err, "failed to tokenize HTML")
 			}
-			return out.Bytes(), nil
+			return imagearchive.RestoreDensity(out.Bytes()), nil
 
 		case html.TextToken:
 			raw := tokenizer.Raw()

@@ -84,6 +84,15 @@ Capture-backend invariants (encoder limits, PDF quirks, what Chrome's MHTML writ
 
 ## Verification
 
+Image downsizing runs after settled prep, before text extraction. Preserve CSS
+intrinsic dimensions with a `srcset` density descriptor, never fixed rendered
+width/height hints. A nonempty `src` would compete as an implicit 1x candidate,
+so keep it empty until `materialize-image-sources` runs in snapshot backends.
+Chrome drops srcset and does not synthesize src; the file writers restore density
+from `data-parch-image-density`. Retain measured target sizes even when preserving
+originals, for browser-free downsizing after OCR. Never rasterize animations or
+strip EXIF orientation/colour profiles in this optimization.
+
 Prep changes are exercised end-to-end through parchmint: build `parch` from this repository (one module, so changes here are picked up directly) and run the reference-site verification described in parchmint's CLAUDE.md. For script-only work, `pscribe --prep staticize -v <url>` shows per-step logs and timings.
 
 ## Conventions

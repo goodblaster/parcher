@@ -55,20 +55,22 @@ const (
 
 // Resource embedding scripts
 const (
-	ExtractBackgroundURLs  ScriptFile = "resources/extract_background_urls.js"
-	InjectBackgroundImages ScriptFile = "resources/inject_background_images.js"
-	ExtractFontFaces       ScriptFile = "resources/extract_font_faces.js"
-	ExtractImageURLs       ScriptFile = "resources/extract_image_urls.js"
-	InjectImages           ScriptFile = "resources/inject_images.js"
-	EmbedImages            ScriptFile = "resources/embed_images.js"
-	EmbedBackgroundImages  ScriptFile = "resources/embed_background_images.js"
-	RasterizeFontIcons     ScriptFile = "resources/rasterize_font_icons.js"
-	InjectCss              ScriptFile = "resources/inject_css.js"
-	RemoveUnusedCSS        ScriptFile = "resources/remove_unused_css.js"
-	RemoveUnusedFonts      ScriptFile = "resources/remove_unused_fonts.js"
-	InlineIframes          ScriptFile = "resources/inline_iframes.js"
-	ListCrossOriginSheets  ScriptFile = "resources/list_crossorigin_sheets.js"
-	InlineSheetText        ScriptFile = "resources/inline_sheet_text.js"
+	ExtractBackgroundURLs   ScriptFile = "resources/extract_background_urls.js"
+	InjectBackgroundImages  ScriptFile = "resources/inject_background_images.js"
+	ExtractFontFaces        ScriptFile = "resources/extract_font_faces.js"
+	ExtractImageURLs        ScriptFile = "resources/extract_image_urls.js"
+	InjectImages            ScriptFile = "resources/inject_images.js"
+	SizeImages              ScriptFile = "resources/size_images.js"
+	MaterializeImageSources ScriptFile = "resources/materialize_image_sources.js"
+	EmbedImages             ScriptFile = "resources/embed_images.js"
+	EmbedBackgroundImages   ScriptFile = "resources/embed_background_images.js"
+	RasterizeFontIcons      ScriptFile = "resources/rasterize_font_icons.js"
+	InjectCss               ScriptFile = "resources/inject_css.js"
+	RemoveUnusedCSS         ScriptFile = "resources/remove_unused_css.js"
+	RemoveUnusedFonts       ScriptFile = "resources/remove_unused_fonts.js"
+	InlineIframes           ScriptFile = "resources/inline_iframes.js"
+	ListCrossOriginSheets   ScriptFile = "resources/list_crossorigin_sheets.js"
+	InlineSheetText         ScriptFile = "resources/inline_sheet_text.js"
 )
 
 // Utility scripts

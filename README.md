@@ -34,6 +34,36 @@ driving a page and returning what your scripts extracted.
 Start with [parchmint/README.md](parchmint/README.md) or
 [pscription/README.md](pscription/README.md).
 
+## Capture defaults
+
+`parch URL` creates a self-contained HTML archive by default. It prepares the
+page, embeds its text layer, and downsizes supported raster images to their
+displayed size in the chosen capture layout, multiplied by `--dpr` (default 1).
+OCR runs only when you invoke `parch ocr`.
+
+Access gates are detected and preserved by default; eligibility declarations
+are not automatically accepted. With `-o page.html`, an unresolved gate produces
+`page.gated.html` and matching metadata in `page.json`, and exits **3**.
+A non-gated or successfully cleared capture uses `page.html` and exits **0**.
+
+```bash
+parch -o page.html https://example.com       # normal capture; exit 3 if gated
+parch --clear page.json                     # approve the recorded gate, then recapture
+parch --auto-clear https://example.com       # approve supported gates as they appear
+parch --gates=preserve https://example.com   # keep the gated view; exit 0 on success
+
+parch --no-downsize-images -o page.html https://example.com # retain original pixels
+parch ocr --downsize-images page.html       # recognize first, then downsize in place
+```
+
+`--clear` and `--auto-clear` explicitly authorize the gate's declarations and
+terms. Clearing leaves the original gated archive and JSON in place; scripts
+should check the latest exit status, not just whether a JSON file exists.
+Plain `parch ocr page.html` preserves image sizes. See the
+[gate workflow](parchmint/README.md#access-gates) and
+[image-sizing details and exceptions](parchmint/README.md#image-sizing), including
+the current PDF paper-scaling limitation.
+
 ## A note on `test-site-N`
 
 Comments and docs cite measurements against real sites — page-load timings,

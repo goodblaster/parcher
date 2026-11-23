@@ -89,6 +89,10 @@ function bakeImageMarks(specs, opts) {
                 }
             }
             const mime = src.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';
+            // The canvas has the density-corrected natural dimensions. Its
+            // new bitmap is 1x; a previous downsizing candidate must not win.
+            img.removeAttribute('srcset');
+            img.removeAttribute('data-parch-image-density');
             img.src = canvas.toDataURL(mime, 0.92);
             stats.marked++;
         } catch (e) {

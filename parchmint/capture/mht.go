@@ -2,6 +2,7 @@ package capture
 
 import (
 	"context"
+	"github.com/goodblaster/parcher/parchmint/internal/imagearchive"
 
 	"github.com/goodblaster/parcher/parchmint/internal/log"
 	"github.com/goodblaster/parcher/parchmint/textlayer"
@@ -50,6 +51,9 @@ func (MHT) Action(snap *Snapshot) act.Func {
 		// trade the attribute for a data- one first. Runs for archives too
 		// (a conversion re-snapshots, and would lose them just the same).
 		_ = pipeline.PreserveHiddenStep().Action(ctx)
+		if err := pipeline.MaterializeImageSourcesStep().Action(ctx); err != nil {
+			return err
+		}
 
 		var content string
 		if err := actions.SaveMhtToString(&content)(ctx); err != nil {
@@ -57,6 +61,11 @@ func (MHT) Action(snap *Snapshot) act.Func {
 		}
 		snap.MIME = "multipart/related"
 		snap.Bytes = []byte(content)
+		var err error
+		snap.Bytes, err = imagearchive.MapDocuments(snap.Bytes, imagearchive.RestoreDensity)
+		if err != nil {
+			return err
+		}
 
 		if len(snap.favicons) > 0 {
 			doc, err := textlayer.MHTDocument(snap.Bytes)
