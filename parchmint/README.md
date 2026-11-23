@@ -24,6 +24,98 @@ with the matches highlighted... even when the text only ever existed as
 pixels. ([Full loop example](examples/search-and-mark) ·
 [format spec](TEXTLAYER.md))
 
+## Defaults
+
+| Behavior | Default | Change it with |
+| --- | --- | --- |
+| Capture format | Self-contained HTML | `-f mht\|pdf\|png\|jpeg\|webp` |
+| Access gates | Detect and preserve; save gated output plus JSON and exit **3** | `--clear FILE`, `--auto-clear`, or `--gates=preserve` |
+| Image pixels | Downsize supported rasters to displayed size × capture DPR | `--no-downsize-images` |
+| Pixel density | **1** output pixel per CSS pixel | `--dpr` |
+| Text layer and favicon | Embedded in HTML/MHT | `--no-text`, `--no-favicon` |
+| OCR | Never run during capture; `parch ocr` preserves image sizes | `parch ocr --downsize-images FILE` to resize after recognition |
+
+These are the built-in defaults; supported configuration settings and explicit
+CLI flags can override them. Logs go to stderr. Use `-o` to name an output file;
+otherwise the name is derived from the URL/configuration, or archive bytes go to
+stdout when piped.
+
+## Access gates
+
+By default, `--gates=detect` preserves detected access gates without accepting
+their declarations. An unresolved capture writes a `.gated` archive and matching
+JSON metadata, then exits **3**. Successful non-gated and cleared captures use
+the regular filename and exit **0**.
+
+```bash
+parch -o page.html https://example.com
+# No gate: page.html; exit 0.
+# Unresolved gate: page.gated.html + page.json; exit 3.
+
+parch --clear page.json
+# Approves the recorded decisions; successful clearance writes page.html.
+```
+
+| Flag | Behavior |
+| --- | --- |
+| `--gates=detect` | Default: preserve unresolved gates and exit 3. |
+| `--gates=preserve` | Intentionally keep the gated view and JSON; exit 0 on success. |
+| `--clear FILE` | Approve the decisions recorded in a metadata file and recapture using its URL, format, and regular output name. |
+| `--auto-clear` | Approve supported gates as they appear in one session, including their declarations and terms. |
+| `--approve-gate ID` | Approve an exact gate fingerprint directly; repeatable. |
+
+`--clear` verifies that the recorded gate still matches before submitting it.
+Changed declarations or another unresolved gate produce an updated gated archive
+and JSON with exit 3. `--auto-clear` also exits 3 if clearance cannot complete;
+it supports simple entry buttons and required checkboxes, not credentials,
+date-of-birth entry, or solving CAPTCHAs.
+
+There is no `.cleared` suffix. The original gated archive and JSON remain after
+successful clearance, so scripts should use the latest exit status rather than
+file existence alone. Other capture options use current settings; repeat options
+such as `--width`, `--dpr`, or `--profile` when they matter to the original capture.
+`--clear` cannot be combined with `--auto-clear`, `--approve-gate`, or
+`--gates=preserve`.
+
+The optional `--report FILE` writes a separate capture report, including for
+non-gated pages; it does not replace the automatic gate metadata file. See
+[Access gates and scriptable captures](ACCESS-GATES.md) for naming rules,
+detection limits, JSON contracts, and a Bash example that handles exit 3.
+
+## Image sizing
+
+Images are downsized **by default** after the page is laid out at the chosen
+viewport dimensions. The target is each image's displayed size multiplied by
+the capture's `--dpr` (default **1**): an image displayed at 300 × 200 CSS pixels
+needs 300 × 200 bitmap pixels at DPR 1, or 600 × 400 at DPR 2.
+
+Aspect ratio and responsive layout are preserved. A source used several times
+retains enough pixels for its largest measured use. Images are never enlarged,
+and a replacement is kept only if its encoded bytes are smaller. JPEG, PNG and
+static WebP are supported, including single-layer `cover`/`contain` backgrounds.
+SVG, GIF/animations, images with EXIF or ICC colour profiles, unmeasurable images
+and complex CSS backgrounds are preserved. PDF `--paper` scaling is not factored
+into downsizing yet; targets use the capture layout and DPR.
+
+`--no-downsize-images` preserves the original embedded image pixels, which may
+help OCR read small text or allow later zooming/re-rendering at larger sizes.
+To let OCR read those pixels before reducing file size:
+
+```bash
+parch --no-downsize-images -o page.html https://example.com
+parch ocr --downsize-images page.html
+```
+
+Plain `parch ocr page.html` **preserves image sizes**. With `--downsize-images`,
+recognition happens first, then images are reduced using the recorded capture
+geometry and density. Both HTML and MHT work without launching a browser; image
+hashes used by search and highlighting are updated with the new bytes. OCR
+updates the archive in place by default; add `-o smaller.html` to keep the input
+unchanged.
+
+Older archives use their text-layer image boxes as the sizing fallback. Missing
+original pixels cannot be recovered from an archive that was already downsized.
+
 ## All the knobs
 
 ```bash
@@ -35,6 +127,7 @@ parch -f png https://example.com           # full-page screenshot (lossless)
 parch -f jpeg https://example.com          # full-page screenshot (smaller)
 parch --links new-tab https://example.com   # external links open in a new tab
 parch --links disable https://example.com   # links kept but unclickable
+parch --no-downsize-images https://example.com # retain original image pixels for OCR/zoom
 parch --no-favicon https://example.com   # skip embedding the page favicon
                                            #   (embedded as a data URI: shown by
                                            #    Chromium/Firefox, ignored by Safari)
@@ -60,6 +153,7 @@ parch -M "phrase" https://…                # capture with matches already mark
 parch ocr page.html                        # OCR the archive's images (charts, frozen
                                            # canvases/iframes) into the text layer —
                                            # needed only to mark text inside images
+parch ocr --downsize-images page.html      # recognize first, then shrink embedded images
 parch mark "phrase" page.html              # → page.marked.html with matches highlighted,
                                            # including matches inside images (--grayscale)
 parch mark --mark-color gold --mark-color cyan foo bar p.html  # a color per phrase; --mark-style underline|box|bold
@@ -76,13 +170,6 @@ HTML captures warn when snapshot resources cannot be embedded. Use
 `parch --strict URL` to fail instead of writing that incomplete HTML archive.
 This checks unresolved snapshot references; it does not certify visual fidelity
 or detect content the page never loaded. `--strict` applies to HTML capture only.
-
-Access gates are [scriptable capture outcomes](ACCESS-GATES.md): an unresolved
-capture writes `page.gated.html` and `page.json`, then exits **3**.
-`parch --clear page.json` uses the saved decisions and writes
-`page.html` after clearance. `--auto-clear` approves supported gates in one run;
-`--report` optionally writes a capture report independently of the automatic
-gate file.
 
 More runnable demos in [examples/](examples) — each is a `run.sh` that
 builds parch and narrates what it does.

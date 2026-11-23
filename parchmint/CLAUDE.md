@@ -142,6 +142,14 @@ Raster encoder limits are in **device** pixels while layout metrics are in **CSS
 
 ## Verification
 
+Downsizing precedes extraction so image hashes match saved bytes. Chrome drops
+`srcset`; snapshot backends materialize its source, then `imagearchive` restores
+the density descriptor from `data-parch-image-density` (also in frame documents).
+This preserves intrinsic CSS dimensions without pinning responsive layout.
+`ocr --downsize-images` reads originals first, then rewrites sources and all OCR
+hash links together. MIME transfer encoding can precede Content-Type: always read
+the complete part header block, or a multipart rewrite gets double-encoded.
+
 `scripts/check-archives.sh` captures each reference site, renders the archive with the network blackholed, and reports bytes, surviving external references, and script count. A good capture leaves at most a handful of `ext-refs` — tracking pixels, a CDN script tag, media the page never loaded (test-site-2 sits at 4; test-site-1 at 0) — so it is the **trend** that diagnoses, not the absolute number. Only a capture that produced nothing exits non-zero. Counts cannot see a blank page, so look at the PNGs too.
 
 (It replaced `compare-serializers.sh`, which A/B'd this backend against the vendored SingleFile one and pixel-diffed the two. That comparison is what justified the swap; it went away with the dependency. Worth knowing if you ever need to re-run that kind of measurement: the diff between two independent live captures is dominated by whatever the page regenerates — animated canvases measured 2–13% with nothing wrong — so the pixel number never diagnoses on its own.)

@@ -139,6 +139,7 @@ func main() {
 	size := registerSizeFlags(flag.CommandLine, false)
 	flag.BoolVar(&noText, "no-text", false, "do not embed the text layer in HTML/MHT archives (it is what 'parch text/find/mark' read)")
 	flag.BoolVar(&noFavicon, "no-favicon", false, "do not embed the page favicon in HTML/MHT archives")
+	noDownsizeImages := flag.Bool("no-downsize-images", false, "preserve original image pixels instead of downsizing to displayed size (useful before OCR)")
 	flag.BoolVar(&text, "text", true, "deprecated: use --no-text")
 	flag.BoolVar(&favicon, "favicon", true, "deprecated: use --no-favicon")
 	_ = flag.CommandLine.MarkDeprecated("text", "use --no-text")
@@ -357,7 +358,8 @@ func main() {
 	start := time.Now()
 
 	opts := capture.Options{
-		Gates: gatePolicy,
+		PreserveImageSizes: *noDownsizeImages,
+		Gates:              gatePolicy,
 		// Only a document container can carry these; the backend answers for
 		// itself, so a new or compiled-out backend needs no edit here.
 		TextLayer:     text && capture.CarriesLayer(backend),

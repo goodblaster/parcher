@@ -235,6 +235,11 @@ The layer records every visible image at capture time:
 `hash` is FNV-1a (32-bit, over the src string's UTF-16 code units) of the
 image's src — by extraction time the prep pipeline has inlined images as
 data URIs, so the hash identifies the same bytes the archive carries.
+For downsized images the selected source can live in a single-candidate `srcset`.
+`natural` records density-corrected CSS intrinsic dimensions, which may exceed
+the encoded bitmap dimensions. Capture reduces images before extraction;
+`ocr --downsize-images` reduces them after recognition and updates both image
+hashes and OCR blocks' `image` references, retaining page-space word boxes.
 This lets `parch ocr` OCR the archive's images and place words in page
 coordinates **without a browser**: it re-hashes the archive's img srcs to
 pair bytes with entries, OCRs each distinct image once, and appends

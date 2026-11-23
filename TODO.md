@@ -1,9 +1,11 @@
 # TODO
 
-- [ ] Optionally downsample embedded images to their displayed dimensions and a
-  chosen pixel density. Measure archive size savings and visual quality. Check
-  the effect on OCR, especially small text, diagrams and screenshots; consider
-  an OCR-friendly minimum resolution or an option to retain original pixels.
+- [x] Downsize embedded images to displayed dimensions and capture pixel density
+  by default. `--no-downsize-images` retains original pixels;
+  `ocr --downsize-images` recognizes first and reduces afterward.
+- [ ] Measure image savings and OCR quality across real sites, especially small
+  text, diagrams and screenshots. Extend optimization to metadata-bearing images
+  and complex CSS backgrounds without changing appearance or animation.
 - [ ] Support passing login usernames and passwords through CLI parameters or
   environment variables. Define how credentials map to login forms and how
   sessions/profiles are reused. Keep credentials out of logs, reports and

@@ -13,6 +13,7 @@ import (
 
 	flag "github.com/spf13/pflag"
 
+	"github.com/goodblaster/parcher/parchmint/internal/imagearchive"
 	"github.com/goodblaster/parcher/parchmint/internal/ocr"
 	"github.com/goodblaster/parcher/parchmint/internal/ocr/engines"
 	"github.com/goodblaster/parcher/parchmint/internal/ocr/std"
@@ -35,6 +36,7 @@ func runOCRCommand(args []string) {
 	fs.IntVar(minSize, "min", 32, "deprecated spelling of --min-size")
 	_ = fs.MarkDeprecated("min", "use --min-size")
 	output := fs.StringP("output", "o", "", "write result here instead of updating the archive in place")
+	downsizeImages := fs.Bool("downsize-images", false, "downsize embedded images to captured display size AFTER OCR (default: preserve pixels)")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s ocr [--engine %s] [--lang en-US] [-o out] <archive.html|.mht>\n\n", os.Args[0], strings.Join(ocr.Names(), "|"))
 		fmt.Fprintln(os.Stderr, "Updates the archive in place unless -o names another file.")
@@ -181,6 +183,15 @@ func runOCRCommand(args []string) {
 		stats.blocks++
 		stats.words += len(block.Words)
 		nextID++
+	}
+
+	if *downsizeImages {
+		var count int
+		data, count, err = imagearchive.Downsize(data, layer)
+		if err != nil {
+			die(err)
+		}
+		fmt.Fprintf(os.Stderr, "parch: downsized %d image use(s) after OCR\n", count)
 	}
 
 	out, err := layer.Marshal()

@@ -291,6 +291,8 @@ func init() {
 	// Not part of Staticize: the snapshot backends run it themselves as the
 	// very last thing before serializing (see PreserveHiddenStep).
 	Register("preserve-hidden-attr", PreserveHiddenStep)
+	Register("downsize-images", func() Step { return SizeImagesStep(false) })
+	Register("materialize-image-sources", MaterializeImageSourcesStep)
 	Register("rewrite-links-new-tab", func() Step { return RewriteLinksStep("new-tab") })
 	Register("rewrite-links-disable", func() Step { return RewriteLinksStep("disable") })
 }
@@ -303,4 +305,15 @@ func init() {
 // photographs the live page has no use for it.
 func PreserveHiddenStep() Step {
 	return stepIgnoreError("preserve-hidden-attr", actions.RunScriptIgnoreError(js.PreserveHiddenAttr, nil))
+}
+
+// SizeImagesStep belongs after final layout preparation and before indexing.
+// Preserve still records dimensions for later downsizing during OCR.
+func SizeImagesStep(preserve bool) Step {
+	return step("downsize-images", actions.SizeImages(preserve))
+}
+
+// MaterializeImageSourcesStep bridges Chrome's srcset loss during snapshots.
+func MaterializeImageSourcesStep() Step {
+	return step("materialize-image-sources", js.MaterializeImageSources.Action(nil))
 }

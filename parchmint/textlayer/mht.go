@@ -217,7 +217,14 @@ func MHTDocument(mht []byte) ([]byte, error) {
 	}
 	// Chrome encodes the document part quoted-printable; tolerate plain
 	// or base64 too.
-	headers := mht[marker:]
+	// MIME header order is arbitrary. A multipart writer may put transfer
+	// encoding BEFORE Content-Type; starting at the marker misses it and
+	// hands callers encoded markup, which they then encode a second time.
+	partStart := bytes.LastIndex(mht[:marker], sep)
+	if partStart < 0 {
+		return nil, fmt.Errorf("malformed mht part headers")
+	}
+	headers := mht[partStart:]
 	if end := bytes.Index(headers, []byte("\r\n\r\n")); end != -1 {
 		headers = headers[:end]
 	}

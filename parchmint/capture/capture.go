@@ -77,6 +77,10 @@ type Snapshot struct {
 
 // Options control capture extras beyond the recipe and backend.
 type Options struct {
+	// PreserveImageSizes retains source pixels; by default embedded rasters
+	// are reduced to their painted size at the capture's device pixel ratio.
+	PreserveImageSizes bool
+
 	// Gates controls preservation and explicit approval of detected access
 	// decisions. The zero value captures an unresolved view without answering.
 	Gates actions.GatePolicy
@@ -246,6 +250,10 @@ func captureOnce(ctx context.Context, url string, cfg runner.Config, recipe pipe
 		if err := session.Run(js.MaterializeFormState.Action(nil), js.FlattenAdoptedStylesheets.Action(nil), js.LinkShadowStyles.Action(nil)); err != nil {
 			return nil, signature, false, err
 		}
+	}
+
+	if err := session.Run(pipeline.SizeImagesStep(opts.PreserveImageSizes).Action); err != nil {
+		return nil, signature, false, err
 	}
 
 	// Text layer and capture-time highlighting, on the prepared page
